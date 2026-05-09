@@ -132,7 +132,6 @@ const isDateInPast = (date) => {
 /**
  * Determine opportunity status based on lastDate.
  *
- * ⭐ KEY RULE:
  *   lastDate = today  → "active"   (valid through the whole day)
  *   lastDate < today  → "archived" (strictly in the past)
  *   lastDate = null   → "active"   (no expiry)
@@ -161,7 +160,6 @@ const getStatusFromLastDate = (lastDate) => {
     return "active";
   }
 
-  // ⭐ STRICT greater-than: archived only when today is AFTER lastDate
   //    lastDate == today  → todayMidnight > lastMidnight is FALSE → "active" ✓
   //    lastDate < today   → todayMidnight > lastMidnight is TRUE  → "archived" ✓
   const status = todayMidnight > lastMidnight ? "archived" : "active";

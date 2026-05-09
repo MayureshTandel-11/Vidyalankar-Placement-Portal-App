@@ -159,16 +159,24 @@ const Layout = ({ children, role = "Student" }) => {
         ) : null}
       </AnimatePresence>
 
-      <main className="flex-1 px-2.5 py-3 xs:px-3 sm:px-4 md:px-5 md:py-5">
-        <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-[260px_minmax(0,1fr)]">
-          <Sidebar role={role} collapsed={collapsed} setCollapsed={setCollapsed} />
+      <main className="flex-1 flex">
+        {/* Content Container */}
+        <div className="w-full flex flex-col md:flex-row md:gap-4">
+          {/* Sidebar - Hidden on mobile, visible on md+ */}
+          <aside className="hidden md:block md:w-60 lg:w-64 flex-shrink-0">
+            <Sidebar role={role} collapsed={collapsed} setCollapsed={setCollapsed} />
+          </aside>
+
+          {/* Main Content Area */}
           <Motion.section
-            className="min-w-0"
+            className="flex-1 min-w-0 px-3 py-3 xs:px-4 sm:px-6 md:px-4 lg:px-6 md:py-4 lg:py-5 overflow-x-hidden"
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.24 }}
           >
-            {children}
+            <div className="mx-auto max-w-7xl">
+              {children}
+            </div>
           </Motion.section>
         </div>
       </main>

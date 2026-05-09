@@ -5,7 +5,7 @@ const rateLimit = require("express-rate-limit");
  * Applied to all routes for general DoS protection
  */
 const globalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 30 * 60 * 1000, // 15 minutes
   max: 100, // 100 requests
   message: "Too many requests from this IP, please try again after 15 minutes",
   standardHeaders: true, // Return rate limit info in RateLimit-* headers
@@ -33,8 +33,8 @@ const globalLimiter = rateLimit({
  * Applied to: /api/auth/register, /api/auth/login, /api/auth/verify-otp, /api/auth/refresh
  */
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // 10 requests
+  windowMs: 30 * 60 * 1000, // 15 minutes
+  max: 50, // 10 requests
   message: "Too many authentication attempts, please try again after 15 minutes",
   standardHeaders: true,
   legacyHeaders: false,
@@ -56,7 +56,7 @@ const authLimiter = rateLimit({
  * Applied to: /api/auth/forgot-password/request-otp, OTP verification attempts
  */
 const otpLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 30 * 60 * 1000, // 15 minutes
   max: 5, // 5 requests
   message: "Too many OTP requests, please try again after 15 minutes",
   standardHeaders: true,
@@ -80,7 +80,7 @@ const otpLimiter = rateLimit({
  */
 const uploadLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 20, // 20 requests
+  max: 50, // 20 requests
   message: "Too many upload requests, please try again after 1 hour",
   standardHeaders: true,
   legacyHeaders: false,

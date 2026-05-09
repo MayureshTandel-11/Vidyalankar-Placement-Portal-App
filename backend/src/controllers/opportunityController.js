@@ -17,7 +17,7 @@ const deriveStatusFromLastDate = (lastDate) => {
 
 const syncOpportunityStatuses = async () => {
   console.log(`\n[OPPORTUNITY SYNC] ========== STARTING STATUS SYNC ==========`);
-  console.log(`[OPPORTUNITY SYNC] ⭐ RULE: Archive ONLY if today is AFTER lastDate (today > lastDate)`);
+  console.log(`[OPPORTUNITY SYNC] RULE: Archive ONLY if today is AFTER lastDate (today > lastDate)`);
   console.log(`[OPPORTUNITY SYNC] This means an opportunity remains ACTIVE through entire lastDate\n`);
 
   const todayStart = getTodayStart();
@@ -44,14 +44,12 @@ const syncOpportunityStatuses = async () => {
       console.log(`[OPPORTUNITY SYNC] Sample - ID: ${op._id}, lastDate: ${opLastDate}, currentStatus: ${op.status}, derivedStatus: ${derivedStatus}, match: ${statusMatches}`);
     });
 
-    // ⭐ Archive only if lastDate < today (today is AFTER lastDate)
     const archivedResult = await Opportunity.updateMany(
       { lastDate: { $lt: todayStart }, status: { $ne: "archived" } },
       { $set: { status: "archived" } }
     );
     console.log(`[OPPORTUNITY SYNC] ✓ Archived ${archivedResult.modifiedCount} opportunities (lastDate < ${todayDate})`);
 
-    // ⭐ Activate if lastDate >= today (today IS or BEFORE lastDate)
     const activatedResult = await Opportunity.updateMany(
       { lastDate: { $gte: todayStart }, status: { $ne: "active" } },
       { $set: { status: "active" } }

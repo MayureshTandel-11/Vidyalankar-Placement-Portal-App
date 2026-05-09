@@ -12,11 +12,8 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
   const [errorMsg, setErrorMsg] = useState("");
   const [expandedSections, setExpandedSections] = useState({});
 
-  // Form State
   const [formData, setFormData] = useState({
-    // Section 0: Student ID
     studentId: "",
-    // Section 1: Academic Info
     academiInfo: {
       year: "",
       sscPercentage: "",
@@ -24,17 +21,14 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
       cgpa: "",
     },
     phone: "",
-    // Section 2: Technical Skills
     technicalSkills: [],
     customSkill: "",
-    // Section 3: Certifications
     certifications: [],
     newCertification: {
       title: "",
       issuer: "",
       issueDate: "",
     },
-    // Section 4: Projects
     projects: [],
     newProject: {
       title: "",
@@ -43,7 +37,6 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
       link: "",
     },
     newProjectTech: "",
-    // Section 5: Professional Links & Resume
     professionalLinks: {
       linkedinProfile: "",
       githubProfile: "",
@@ -58,7 +51,6 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
 
   const [validationErrors, setValidationErrors] = useState({});
 
-  // Load existing profile data on mount
   useEffect(() => {
     const loadProfile = async () => {
       try {

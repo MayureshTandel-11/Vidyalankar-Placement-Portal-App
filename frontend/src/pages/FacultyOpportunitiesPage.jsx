@@ -43,7 +43,6 @@ const normalizeToForm = (item) => ({
 });
 
 const isArchived = (item) => {
-  // ⭐ MATCH BACKEND LOGIC: Compare dates at midnight, not timestamps
   const lastMidnight = new Date(item.lastDate);
   lastMidnight.setHours(0, 0, 0, 0);
   const todayMidnight = new Date();

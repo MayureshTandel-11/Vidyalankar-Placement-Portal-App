@@ -189,7 +189,6 @@ const AdminOpportunitiesPage = () => {
 
   const isArchived = (item) => {
     if (item.status === "archived") return true;
-    // ⭐ MATCH BACKEND LOGIC: Compare dates at midnight, not timestamps
     const lastMidnight = new Date(item.lastDate);
     lastMidnight.setHours(0, 0, 0, 0);
     const todayMidnight = new Date();
@@ -200,43 +199,52 @@ const AdminOpportunitiesPage = () => {
   return (
     <>
       <Layout role="Admin">
-      <SectionTitle title="Opportunities" subtitle="Create, edit, and manage opportunities." />
-      <StatusMessage message={message} />
-      <StatusMessage type="error" message={error} />
-      <OpportunityForm
-        value={form}
-        onChange={setForm}
-        onSubmit={editingId ? handleSaveEdit : createOpportunity}
-        submitLabel={editingId ? "Save Changes" : "Create Opportunity"}
-        showDepartment
-        loading={saving}
-        isEditing={Boolean(editingId)}
-        onCancelEdit={editingId ? resetForm : undefined}
-      />
-      <div className="mt-6">
-        {loading ? (
-          <div className="py-8 flex justify-center"><Spinner /></div>
-        ) : items.length ? (
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {items.map((item) => (
-              <OpportunityCard
-                key={item._id}
-                opportunity={item}
-                canManage
-                onEdit={handleEdit}
-                onDelete={handleDelete}
-                editDisabled={isArchived(item)}
-                editLoading={Boolean(editingId && item._id === editingId && saving)}
-                deleteLoading={deletingId === item._id}
-              />
-            ))}
-          </div>
-        ) : (
-          <EmptyState title="No active opportunities" subtitle="Create an opportunity using the form above." />
-        )}
-      </div>
-    </Layout>
-    <Footer />
+        <SectionTitle title="Opportunities" subtitle="Create, edit, and manage opportunities." />
+        <StatusMessage message={message} />
+        <StatusMessage type="error" message={error} />
+
+        {/* Opportunity Form */}
+        <div className="mb-6 sm:mb-8">
+          <OpportunityForm
+            value={form}
+            onChange={setForm}
+            onSubmit={editingId ? handleSaveEdit : createOpportunity}
+            submitLabel={editingId ? "Save Changes" : "Create Opportunity"}
+            showDepartment
+            loading={saving}
+            isEditing={Boolean(editingId)}
+            onCancelEdit={editingId ? resetForm : undefined}
+          />
+        </div>
+
+        {/* Opportunities Grid */}
+        <section className="mt-8 sm:mt-10">
+          <h2 className="text-lg sm:text-xl font-semibold text-slate-900 mb-5">Active Opportunities</h2>
+          {loading ? (
+            <div className="py-12 flex justify-center">
+              <Spinner />
+            </div>
+          ) : items.length ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 lg:gap-6">
+              {items.map((item) => (
+                <OpportunityCard
+                  key={item._id}
+                  opportunity={item}
+                  canManage
+                  onEdit={handleEdit}
+                  onDelete={handleDelete}
+                  editDisabled={isArchived(item)}
+                  editLoading={Boolean(editingId && item._id === editingId && saving)}
+                  deleteLoading={deletingId === item._id}
+                />
+              ))}
+            </div>
+          ) : (
+            <EmptyState title="No active opportunities" subtitle="Create an opportunity using the form above." />
+          )}
+        </section>
+      </Layout>
+      <Footer />
     </>
   );
 };

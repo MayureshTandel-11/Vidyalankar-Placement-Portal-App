@@ -10,7 +10,7 @@ const { isValidDepartment } = require("../constants/departments");
 
 // Constants
 const BCRYPT_SALT_ROUNDS = 12; // Use 12 for better security
-const ACCESS_TOKEN_EXPIRY = "15m";
+const ACCESS_TOKEN_EXPIRY = "30m";
 const REFRESH_TOKEN_EXPIRY = "7d";
 const OTP_EXPIRY_MS = 10 * 60 * 1000; // 10 minutes
 const MAX_OTP_ATTEMPTS = 3;
@@ -18,8 +18,8 @@ const MAX_OTP_ATTEMPTS = 3;
 const instituteEmailRegex = /^[a-z]+(?:\.[a-z]+)+@vsit\.edu\.in$/i;
 
 // In-memory OTP request limiter (in production, use Redis)
-const otpRateWindowMs = 60 * 1000;
-const otpRequestLimitPerWindow = 3;
+const otpRateWindowMs = 60 * 10000;
+const otpRequestLimitPerWindow = 30;
 const otpLimiter = new Map();
 
 const canRequestOtp = (studentId) => {
@@ -198,7 +198,6 @@ const registerStudent = async (req, res) => {
 
     console.log(`[AUTH][REGISTER] Registration initiated for ${studentId} (${email}). OTP created (not verified yet).`);
 
-    // ⭐ NEVER return OTP in response for security
     return ok(
       res,
       {
@@ -262,7 +261,6 @@ const verifyOtp = async (req, res) => {
       return fail(res, 400, `Invalid OTP. Attempt ${otpDoc.failedAttempts}/${MAX_OTP_ATTEMPTS}`);
     }
 
-    // ⭐ OTP verified! Now create the user in database
     const registrationData = otpDoc.registrationData;
     if (!registrationData || !registrationData.name || !registrationData.phone || !registrationData.department || !registrationData.password) {
       console.error(`[AUTH][VERIFY_OTP] Missing registration data for studentId: ${studentId}`);

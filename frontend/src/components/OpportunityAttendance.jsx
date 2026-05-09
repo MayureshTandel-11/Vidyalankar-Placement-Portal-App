@@ -37,14 +37,12 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
   const currentStage = getCurrentStage();
   const isReadOnly = selectedStage && currentStage && selectedStage !== currentStage;
 
-  // Fetch attendance when stage is selected
   useEffect(() => {
     if (!selectedStage) {
       setAttendanceList([]);
       return;
     }
 
-    // Validate opportunityId as MongoDB ObjectId (24 hex chars)
     const isValidId = /^[0-9a-fA-F]{24}$/.test(opportunityId);
     console.log('[DEBUG] OpportunityAttendance fetch:', { opportunityId, isValidId, stage: selectedStage });
     if (!isValidId) {
@@ -77,7 +75,6 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
     return () => controller.abort();
   }, [opportunityId, selectedStage, fetchAttendanceFromContext]);
 
-  // Auto-select first active stage when component mounts or activeStages changes
   useEffect(() => {
     console.log('[OpportunityAttendance] Auto-select check:', {
       selectedStage,
@@ -91,9 +88,8 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
     }
   }, [activeStages]);
 
-  // Socket listener for attendance updates
   useEffect(() => {
-    if (!socket) return; // Guard against null socket
+    if (!socket) return;
 
     const handleAttendanceUpdate = ({ studentId, stage, status, markedBy, markedAt }) => {
       if (stage === selectedStage) {
@@ -132,7 +128,6 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
           status,
         });
       } catch (err) {
-        // Revert optimistic update on error
         setOptimisticUpdates((prev) => ({ ...prev, [key]: null }));
         const errorMessage = err.response?.data?.message || err.message || "Failed to mark attendance";
         setError(errorMessage);
@@ -142,7 +137,6 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
     [opportunityId, selectedStage]
   );
 
-  // Calculate summary stats
   const stats = {
     total: attendanceList.length,
     present: attendanceList.filter((a) => a.status === "present").length,
@@ -160,7 +154,6 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
         </div>
       )}
 
-      {/* Stage Filter Bar */}
       <div className="rounded-lg border border-slate-200 bg-white p-4">
         <h3 className="text-sm font-semibold text-slate-800 mb-3">Select Stage</h3>
         <div className="flex gap-2 overflow-x-auto pb-2">
@@ -196,7 +189,6 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
         </div>
       </div>
 
-      {/* Attendance List */}
       {!selectedStage ? (
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-8 text-center">
           <p className="text-sm text-slate-600">Select a stage above to view attendance.</p>
@@ -241,7 +233,6 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
                 </div>
               </div>
 
-              {/* Read-Only Applicant List */}
               <div className="space-y-2">
                 {attendanceList.map((record) => {
                   const student = record.studentId;
@@ -259,12 +250,10 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
                       className={`rounded-lg border ${statusDisplay.color} bg-white p-4`}
                     >
                       <div className="flex items-center gap-4">
-                        {/* Student Avatar */}
                         <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-400 to-blue-500 flex items-center justify-center flex-shrink-0 text-white font-semibold text-sm">
                           {student.name?.charAt(0)?.toUpperCase()}
                         </div>
 
-                        {/* Student Info */}
                         <div className="flex-1">
                           <h4 className="text-sm font-semibold text-slate-900">
                             {student.name}
@@ -274,7 +263,6 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
                           </p>
                         </div>
 
-                        {/* Status Badge */}
                         <div className="flex items-center gap-2">
                           {currentStatus === "present" && (
                             <div className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-100 text-emerald-700 text-xs font-medium border border-emerald-300">
@@ -340,7 +328,6 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
             </div>
           </div>
 
-          {/* Applicant List */}
           <div className="space-y-2">
             {attendanceList.map((record) => {
               const student = record.studentId;
@@ -354,12 +341,10 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
                   className="rounded-lg border border-slate-200 bg-white p-4 hover:shadow-md transition-shadow"
                 >
                   <div className="flex items-center gap-4">
-                    {/* Student Avatar */}
                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-400 to-blue-500 flex items-center justify-center flex-shrink-0 text-white font-semibold text-sm">
                       {student.name?.charAt(0)?.toUpperCase()}
                     </div>
 
-                    {/* Student Info */}
                     <div className="flex-1">
                       <h4 className="text-sm font-semibold text-slate-900">
                         {student.name}
@@ -369,7 +354,6 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
                       </p>
                     </div>
 
-                    {/* Action Buttons */}
                     <div className="flex gap-2">
                       <button
                         onClick={() =>

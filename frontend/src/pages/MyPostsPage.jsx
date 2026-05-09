@@ -34,7 +34,6 @@ const normalizeToForm = (item) => ({
 });
 
 const isArchived = (item) => {
-  // ⭐ MATCH BACKEND LOGIC: Compare dates at midnight, not timestamps
   const lastMidnight = new Date(item.lastDate);
   lastMidnight.setHours(0, 0, 0, 0);
   const todayMidnight = new Date();
@@ -219,53 +218,55 @@ const MyPostsPage = () => {
   };
 
   return (
-    <Layout role="Faculty">
-      <SectionTitle title="My Posts" subtitle="All opportunities posted or broadcasted by you." />
-      <StatusMessage type="error" message={error} />
-      {loading ? (
-        <div className="py-8 flex justify-center"><Spinner /></div>
-      ) : allPosts.length ? (
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {allPosts.map((item) => (
-            <OpportunityCard
-              key={item._id}
-              opportunity={item}
-              canManage={true}
-              onEdit={handleEdit}
-              onDelete={handleDelete}
-              deleteLoading={deletingId === (item.id || item._id)}
-            />
-          ))}
-        </div>
-      ) : (
-        <EmptyState title="No posts yet" subtitle="Your active and archived posts will appear here." />
-      )}
+    <>
+      <Layout role="Faculty">
+        <SectionTitle title="My Posts" subtitle="All opportunities posted or broadcasted by you." />
+        <StatusMessage type="error" message={error} />
+        {loading ? (
+          <div className="py-8 flex justify-center"><Spinner /></div>
+        ) : allPosts.length ? (
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {allPosts.map((item) => (
+              <OpportunityCard
+                key={item._id}
+                opportunity={item}
+                canManage={true}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+                deleteLoading={deletingId === (item.id || item._id)}
+              />
+            ))}
+          </div>
+        ) : (
+          <EmptyState title="No posts yet" subtitle="Your active and archived posts will appear here." />
+        )}
 
-      <Modal
-        open={isModalOpen}
-        onClose={() => {
-          setIsModalOpen(false);
-          resetForm();
-        }}
-        title={editingId ? "Edit Opportunity" : "Create Opportunity"}
-      >
-        <OpportunityForm
-          value={form}
-          onChange={setForm}
-          onSubmit={handleSubmit}
-          submitLabel={editingId ? "Update Opportunity" : "Create Opportunity"}
-          showDepartment={false}
-          departmentLocked={true}
-          loading={saving}
-          isEditing={!!editingId}
-          onCancelEdit={() => {
+        <Modal
+          open={isModalOpen}
+          onClose={() => {
             setIsModalOpen(false);
             resetForm();
           }}
-        />
-      </Modal>
-    </Layout>
-    <Footer />
+          title={editingId ? "Edit Opportunity" : "Create Opportunity"}
+        >
+          <OpportunityForm
+            value={form}
+            onChange={setForm}
+            onSubmit={handleSubmit}
+            submitLabel={editingId ? "Update Opportunity" : "Create Opportunity"}
+            showDepartment={false}
+            departmentLocked={true}
+            loading={saving}
+            isEditing={!!editingId}
+            onCancelEdit={() => {
+              setIsModalOpen(false);
+              resetForm();
+            }}
+          />
+        </Modal>
+      </Layout>
+      <Footer />
+    </>
   );
 };
 

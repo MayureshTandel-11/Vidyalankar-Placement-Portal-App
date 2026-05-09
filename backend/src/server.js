@@ -89,14 +89,6 @@ app.use(cors(corsOptions));
 // Body parsing
 app.use(express.json());
 
-// SECURITY: MongoDB injection prevention (disabled - Express 5 incompatibility)
-// Using custom sanitizeRequest middleware instead
-// app.use(mongoSanitize({
-//   replaceWith: "_",
-//   onSanitize: ({ req, key }) => {
-//     console.warn(`[SECURITY] MongoDB sanitized field: ${key}`);
-//   }
-// }));
 
 // SECURITY: Global rate limiting (100 requests per 15 minutes per IP)
 app.use(globalLimiter);
@@ -304,7 +296,7 @@ const startServer = async () => {
       console.log(`[ADMIN SEED] Admin already present: email=${adminSeedResult.email}`);
     }
 
-    const PORT = process.env.PORT || 5000;
+    const PORT = process.env.PORT || 5001;
     server.listen(PORT, () => {
       console.log(`[SERVER] ✓ Running on port ${PORT} with Socket.IO`);
       console.log(`[SERVER] ✓ Environment: ${process.env.NODE_ENV}`);

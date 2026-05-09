@@ -35,14 +35,13 @@ const stageOrder = [
   const socket = getSocket();
   const lastFetchRef = useRef(0);
 
-  // Sync localActiveStages with activeStages prop changes
   useEffect(() => {
     if (activeStages && activeStages.length > 0) {
       setLocalActiveStages(activeStages);
     }
   }, [activeStages]);
 
-  // Fetch timeline on mount with caching
+
   useEffect(() => {
     const isValidId = /^[0-9a-fA-F]{24}$/.test(opportunityId);
     if (!isValidId) {
@@ -79,7 +78,6 @@ const stageOrder = [
     doFetch();
   }, [opportunityId, fetchTimeline]);
 
-  // Socket listener for new timeline entries
   useEffect(() => {
     if (!socket) return; // Guard against null socket
 
@@ -89,10 +87,8 @@ const stageOrder = [
         const updated = [...(Array.isArray(prev) ? prev : []), entry];
         return updated;
       });
-      // Update local stages
       if (Array.isArray(newActiveStages) && newActiveStages.length > 0) {
         setLocalActiveStages(newActiveStages);
-        // Update cache for the context so other components get fresh data
         invalidateTimelineCache(opportunityId);
       }
     };
@@ -120,7 +116,6 @@ const stageOrder = [
         activateStage: activateStage && selectedStage !== "General Update",
       });
 
-      // Clear form
       setNewComment("");
       setSelectedStage("");
       setActivateStage(false);
@@ -137,7 +132,6 @@ const stageOrder = [
 
   return (
     <div className="space-y-6">
-      {/* Error Message */}
       {error && (
         <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4">
           <AlertCircle size={18} className="mt-0.5 text-red-600 flex-shrink-0" />
@@ -145,7 +139,6 @@ const stageOrder = [
         </div>
       )}
 
-      {/* Stage Progress Bar */}
       <div className="rounded-lg border border-slate-200 bg-white p-4">
         <h3 className="text-sm font-semibold text-slate-700 mb-3">Selection Process</h3>
         <div className="flex items-center gap-2">
@@ -175,12 +168,10 @@ const stageOrder = [
         </div>
       </div>
 
-      {/* Post Form (Faculty/Admin Only) */}
       {isFacultyOrAdmin && (
         <div className="rounded-lg border border-indigo-200 bg-gradient-to-br from-indigo-50 to-indigo-100/50 p-5">
           <h3 className="text-sm font-semibold text-indigo-900 mb-4">Post Update</h3>
           <div className="space-y-3">
-            {/* Stage Selection */}
             <div>
               <label className="block text-xs font-medium text-indigo-800 mb-1.5">
                 Stage
@@ -206,7 +197,6 @@ const stageOrder = [
               </select>
             </div>
 
-            {/* Comment Input */}
             <div>
               <label className="block text-xs font-medium text-indigo-800 mb-1.5">
                 Comment
@@ -220,7 +210,6 @@ const stageOrder = [
               />
             </div>
 
-            {/* Activate Stage Toggle */}
             {selectedStage && selectedStage !== "General Update" && (
               <div className="flex items-center gap-2 rounded-lg bg-white/50 p-3 border border-indigo-200">
                 <input
@@ -236,7 +225,6 @@ const stageOrder = [
               </div>
             )}
 
-            {/* Submit Button */}
             <button
               onClick={handlePostUpdate}
               disabled={isPosting}
@@ -254,7 +242,6 @@ const stageOrder = [
         </div>
       )}
 
-      {/* Timeline Feed */}
       <div className="space-y-3">
         <h3 className="text-sm font-semibold text-slate-800">Activity Feed</h3>
         {isLoading ? (
@@ -271,8 +258,7 @@ const stageOrder = [
         ) : (
           [...timelineEntries].reverse().map((entry, idx) => (
             <div key={idx} className="rounded-lg border border-slate-200 bg-white p-4 hover:shadow-md transition-shadow">
-              {/* Stage Activation Banner */}
-              {entry.isStageActivation && (
+\              {entry.isStageActivation && (
                 <div className="mb-3 flex items-center gap-2 rounded-lg bg-green-50 p-2 border border-green-200">
                   <CheckCircle size={16} className="text-green-600 flex-shrink-0" />
                   <span className="text-xs font-medium text-green-800">
@@ -281,7 +267,6 @@ const stageOrder = [
                 </div>
               )}
 
-              {/* Header */}
               <div className="flex items-start justify-between gap-3 mb-2">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
@@ -312,7 +297,6 @@ const stageOrder = [
                 </div>
               </div>
 
-              {/* Comment */}
               <p className="text-sm text-slate-700 leading-relaxed">{entry.comment}</p>
             </div>
           ))

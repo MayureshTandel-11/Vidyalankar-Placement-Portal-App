@@ -51,7 +51,6 @@ const RegisterPage = () => {
     try {
       const response = await api.post("/auth/register", form);
       const data = extractApiData(response);
-      // ⭐ Never display OTP to user for security
       if (data?.otpDelivery === "failed") {
         setMsg("⚠️ Email delivery failed. Please contact support.");
       } else {
