@@ -279,35 +279,37 @@ const OpportunityCard = ({
           <div className="pointer-events-none absolute right-2 sm:right-3 top-2 sm:top-3 flex gap-1.5 xs:gap-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
             <button
               type="button"
-              disabled={editDisabled || editLoading || deleteLoading}
+              disabled={archived || editDisabled || editLoading || deleteLoading}
               onClick={(event) => {
                 event.stopPropagation();
-                if (editDisabled || editLoading || deleteLoading) return;
+                if (archived || editDisabled || editLoading || deleteLoading) return;
                 onEdit?.(opportunity);
               }}
               className={`pointer-events-auto rounded-lg border bg-white/85 p-1.5 xs:p-2 transition text-xs sm:text-sm ${
-                editDisabled || editLoading || deleteLoading
+                archived || editDisabled || editLoading || deleteLoading
                   ? "cursor-not-allowed border-slate-200 text-slate-300"
                   : "border-slate-200 text-slate-600 hover:border-indigo-200 hover:text-indigo-600"
               }`}
               aria-label="Edit opportunity"
+              title={archived ? "Cannot edit archived opportunities" : "Edit opportunity"}
             >
               <Pencil size={14} />
             </button>
             <button
               type="button"
-              disabled={editLoading || deleteLoading}
+              disabled={archived || editLoading || deleteLoading}
               onClick={(event) => {
                 event.stopPropagation();
-                if (editLoading || deleteLoading) return;
+                if (archived || editLoading || deleteLoading) return;
                 onDelete?.(opportunity);
               }}
               className={`pointer-events-auto rounded-lg border bg-white/85 p-2 transition ${
-                editLoading || deleteLoading
+                archived || editLoading || deleteLoading
                   ? "cursor-not-allowed border-slate-200 text-slate-300"
                   : "border-slate-200 text-slate-600 hover:border-rose-200 hover:text-rose-600"
               }`}
               aria-label="Delete opportunity"
+              title={archived ? "Cannot delete archived opportunities" : "Delete opportunity"}
             >
               <Trash2 size={14} />
             </button>

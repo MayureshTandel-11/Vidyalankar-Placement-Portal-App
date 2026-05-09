@@ -2,7 +2,14 @@ import { useState, useEffect, useCallback } from "react";
 import api from "../api";
 import { useOpportunities } from "../context/OpportunitiesContext";
 import { getSocket } from "../utils/socket";
-import { AlertCircle, CheckCircle, XCircle, Clock } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle,
+  XCircle,
+  Clock,
+  Download,
+  Send,
+} from "lucide-react";
 import { Spinner, StatusMessage } from "./ui";
 
 const STAGES = [
@@ -22,6 +29,12 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
   const [optimisticUpdates, setOptimisticUpdates] = useState({});
   const socket = getSocket();
 
+  // New state for submission and download features
+  const [stageStatus, setStageStatus] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+
   // Determine the current stage (most recently activated)
   const getCurrentStage = () => {
     if (!activeStages || activeStages.length === 0) return null;
@@ -36,18 +49,21 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
 
   const currentStage = getCurrentStage();
   const isReadOnly = selectedStage && currentStage && selectedStage !== currentStage;
+  const isStageSubmitted = stageStatus?.isSubmitted || false;
+  const canEditAttendance = !isReadOnly && !isStageSubmitted;
 
+  // Fetch attendance data including stage status
   useEffect(() => {
     if (!selectedStage) {
       setAttendanceList([]);
+      setStageStatus(null);
       return;
     }
 
     const isValidId = /^[0-9a-fA-F]{24}$/.test(opportunityId);
-    console.log('[DEBUG] OpportunityAttendance fetch:', { opportunityId, isValidId, stage: selectedStage });
     if (!isValidId) {
-      console.error('[DEBUG] Invalid opportunityId:', opportunityId);
-      setError('Invalid opportunity - cannot load attendance');
+      console.error("[DEBUG] Invalid opportunityId:", opportunityId);
+      setError("Invalid opportunity - cannot load attendance");
       setAttendanceList([]);
       setIsLoading(false);
       return;
@@ -57,15 +73,16 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
     const fetchAttendanceData = async () => {
       try {
         setIsLoading(true);
-        const data = await fetchAttendanceFromContext(opportunityId, selectedStage);
-        setAttendanceList(data || []);
+        // Call API directly to get stage status
+        const response = await api.get(`/attendance/${opportunityId}/${selectedStage}`);
+        setAttendanceList(response.data?.data || []);
+        setStageStatus(response.data?.stageStatus || {});
         setError("");
       } catch (err) {
-        if (err.name === 'AbortError') return;
-        setError(
-          err.response?.data?.message || "Failed to fetch attendance"
-        );
+        if (err.name === "AbortError") return;
+        setError(err.response?.data?.message || "Failed to fetch attendance");
         setAttendanceList([]);
+        setStageStatus(null);
       } finally {
         setIsLoading(false);
       }
@@ -73,7 +90,7 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
 
     fetchAttendanceData();
     return () => controller.abort();
-  }, [opportunityId, selectedStage, fetchAttendanceFromContext]);
+  }, [opportunityId, selectedStage]);
 
   useEffect(() => {
     console.log('[OpportunityAttendance] Auto-select check:', {
@@ -88,6 +105,7 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
     }
   }, [activeStages]);
 
+  // Socket event listeners
   useEffect(() => {
     if (!socket) return;
 
@@ -107,16 +125,37 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
       }
     };
 
+    const handleAttendanceSubmitted = ({ stage, submittedBy, submittedAt, totalRecords, presentCount, absentCount }) => {
+      if (stage === selectedStage) {
+        setStageStatus({
+          stage,
+          isSubmitted: true,
+          submittedAt,
+          submittedBy,
+          totalRecords,
+          presentCount,
+          absentCount,
+        });
+      }
+    };
+
     socket.on("attendance:update", handleAttendanceUpdate);
+    socket.on("attendance:submitted", handleAttendanceSubmitted);
 
     return () => {
       socket.off("attendance:update", handleAttendanceUpdate);
+      socket.off("attendance:submitted", handleAttendanceSubmitted);
     };
   }, [selectedStage, socket]);
 
+  // Handle marking attendance
   const handleMarkAttendance = useCallback(
     async (studentId, status) => {
-      // Optimistic update
+      if (isStageSubmitted) {
+        setError("Cannot modify attendance - this stage has been submitted");
+        return;
+      }
+
       const key = `${studentId}:${selectedStage}`;
       setOptimisticUpdates((prev) => ({ ...prev, [key]: status }));
       setError("");
@@ -134,8 +173,66 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
         console.error("[MARK ATTENDANCE ERROR]", err);
       }
     },
-    [opportunityId, selectedStage]
+    [opportunityId, selectedStage, isStageSubmitted]
   );
+
+  // Handle attendance submission
+  const handleSubmitAttendance = async () => {
+    setShowConfirmModal(false);
+    setIsSubmitting(true);
+    setError("");
+
+    try {
+      const response = await api.post(`/attendance/submit/${opportunityId}/${selectedStage}`);
+      setStageStatus(response.data?.data);
+      // Clear optimistic updates
+      setOptimisticUpdates({});
+    } catch (err) {
+      const errorMessage = err.response?.data?.message || err.message || "Failed to submit attendance";
+      setError(errorMessage);
+      console.error("[SUBMIT ATTENDANCE ERROR]", err);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Handle attendance download
+  const handleDownloadAttendance = async () => {
+    setIsDownloading(true);
+    setError("");
+
+    try {
+      const response = await api.get(`/attendance/download/${opportunityId}/${selectedStage}`, {
+        responseType: "blob",
+      });
+
+      // Create blob and download
+      const blob = new Blob([response.data], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+
+      // Generate filename from response headers or default
+      const contentDisposition = response.headers["content-disposition"];
+      let filename = "attendance.csv";
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+        if (filenameMatch) filename = filenameMatch[1];
+      }
+
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      const errorMessage = err.response?.data?.message || "Failed to download attendance";
+      setError(errorMessage);
+      console.error("[DOWNLOAD ATTENDANCE ERROR]", err);
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   const stats = {
     total: attendanceList.length,
@@ -145,7 +242,7 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-32">
       {/* Error Message */}
       {error && (
         <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4">
@@ -156,7 +253,8 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
 
       <div className="rounded-lg border border-slate-200 bg-white p-4">
         <h3 className="text-sm font-semibold text-slate-800 mb-3">Select Stage</h3>
-        <div className="flex gap-2 overflow-x-auto pb-2">
+        {/* Stage selector with padding to accommodate badges */}
+        <div className="flex gap-2 overflow-x-auto pb-2 pt-3 px-1 -mx-1">
           {STAGES.map((stage) => {
             const isActive = stage === selectedStage;
             const isEnabled = activeStages.includes(stage);
@@ -164,7 +262,10 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
             const isPrevious = isEnabled && !isCurrent;
 
             return (
-              <div key={stage} className="relative">
+              <div
+                key={stage}
+                className="relative flex-shrink-0"
+              >
                 <button
                   onClick={() => isEnabled && setSelectedStage(stage)}
                   disabled={!isEnabled}
@@ -178,8 +279,9 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
                 >
                   {stage}
                 </button>
+                {/* Badge positioned at top-right, fully visible above button */}
                 {isPrevious && (
-                  <span className="absolute -top-2 -right-2 px-2 py-0.5 text-xs font-semibold bg-orange-500 text-white rounded-full">
+                  <span className="absolute -top-3 -right-3 px-2.5 py-0.5 text-xs font-bold bg-orange-500 text-white rounded-full shadow-md border border-orange-600 z-10">
                     Closed
                   </span>
                 )}
@@ -195,11 +297,19 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
         </div>
       ) : isReadOnly ? (
         <>
+          {/* Read-only message for previous stages */}
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 flex items-start gap-3">
             <AlertCircle size={18} className="mt-0.5 text-amber-600 flex-shrink-0" />
-            <p className="text-sm text-amber-800">
-              <strong>Previous Stage:</strong> This stage is now closed for editing. View the final attendance records below.
-            </p>
+            <div className="flex-1">
+              <p className="text-sm text-amber-800">
+                <strong>Previous Stage:</strong> This stage is now closed for editing. View the final attendance records below.
+              </p>
+              {isStageSubmitted && (
+                <p className="text-xs text-amber-700 mt-1">
+                  ✓ Attendance submitted on {new Date(stageStatus?.submittedAt).toLocaleDateString()} by {stageStatus?.submittedBy?.name || "Admin"}
+                </p>
+              )}
+            </div>
           </div>
           {isLoading ? (
             <div className="flex justify-center py-8">
@@ -305,6 +415,21 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
           <p className="text-sm text-slate-600">No applicants found for this stage.</p>
         </div>
       ) : (
+        <>
+          {/* Submission status message */}
+          {isStageSubmitted && (
+            <div className="rounded-lg border border-green-200 bg-green-50 p-4 flex items-start gap-3">
+              <CheckCircle size={18} className="mt-0.5 text-green-600 flex-shrink-0" />
+              <div>
+                <p className="text-sm text-green-800">
+                  <strong>✓ Attendance Submitted:</strong> Attendance for this stage has been finalized and locked.
+                </p>
+                <p className="text-xs text-green-700 mt-1">
+                  This stage has {stats.total} records ({stats.present} Present, {stats.absent} Absent)
+                </p>
+              </div>
+            </div>
+          )}
         <div className="space-y-4">
           {/* Summary Stats */}
           <div className="rounded-lg border border-slate-200 bg-white p-4">
@@ -354,38 +479,128 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
                       </p>
                     </div>
 
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() =>
-                          handleMarkAttendance(student.studentId, "present")
-                        }
-                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                          currentStatus === "present"
-                            ? "bg-emerald-100 text-emerald-700 border border-emerald-300"
-                            : "bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200"
-                        }`}
-                      >
-                        <CheckCircle size={14} className="inline mr-1" />
-                        Present
-                      </button>
-                      <button
-                        onClick={() =>
-                          handleMarkAttendance(student.studentId, "absent")
-                        }
-                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                          currentStatus === "absent"
-                            ? "bg-rose-100 text-rose-700 border border-rose-300"
-                            : "bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200"
-                        }`}
-                      >
-                        <XCircle size={14} className="inline mr-1" />
-                        Absent
-                      </button>
-                    </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() =>
+                            handleMarkAttendance(student.studentId, "present")
+                          }
+                          disabled={!canEditAttendance}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                            currentStatus === "present"
+                              ? "bg-emerald-100 text-emerald-700 border border-emerald-300"
+                              : "bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200"
+                          } ${!canEditAttendance ? "opacity-50 cursor-not-allowed" : ""}`}
+                        >
+                          <CheckCircle size={14} className="inline mr-1" />
+                          Present
+                        </button>
+                        <button
+                          onClick={() =>
+                            handleMarkAttendance(student.studentId, "absent")
+                          }
+                          disabled={!canEditAttendance}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                            currentStatus === "absent"
+                              ? "bg-rose-100 text-rose-700 border border-rose-300"
+                              : "bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200"
+                          } ${!canEditAttendance ? "opacity-50 cursor-not-allowed" : ""}`}
+                        >
+                          <XCircle size={14} className="inline mr-1" />
+                          Absent
+                        </button>
+                      </div>
                   </div>
                 </div>
               );
             })}
+          </div>
+          </div>
+        </>
+      )}
+
+      {/* Fixed Footer with Action Buttons */}
+      {selectedStage && !isReadOnly && attendanceList.length > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-lg p-4 flex gap-3 justify-end">
+          <button
+            onClick={handleDownloadAttendance}
+            disabled={isDownloading || !isStageSubmitted}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isDownloading ? (
+              <>
+                <Spinner />
+                Downloading...
+              </>
+            ) : (
+              <>
+                <Download size={16} />
+                Download
+              </>
+            )}
+          </button>
+
+          <button
+            onClick={() => setShowConfirmModal(true)}
+            disabled={isSubmitting || isStageSubmitted}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isSubmitting ? (
+              <>
+                <Spinner />
+                Submitting...
+              </>
+            ) : (
+              <>
+                <Send size={16} />
+                {isStageSubmitted ? "Submitted" : "Submit Attendance"}
+              </>
+            )}
+          </button>
+        </div>
+      )}
+
+      {/* Confirmation Modal */}
+      {showConfirmModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-sm w-full">
+            <div className="p-6">
+              <h3 className="text-lg font-semibold text-slate-900 mb-2">
+                Confirm Attendance Submission
+              </h3>
+              <p className="text-sm text-slate-600 mb-4">
+                Are you sure you want to submit attendance for <strong>{selectedStage}</strong>? Once submitted, attendance cannot be edited unless reopened by an admin.
+              </p>
+              <div className="rounded-lg bg-slate-50 p-3 mb-4 text-xs text-slate-700">
+                <p>
+                  <strong>Summary:</strong> {stats.total} records ({stats.present} Present, {stats.absent} Absent, {stats.pending} Pending)
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3 p-4 border-t border-slate-200 justify-end">
+              <button
+                onClick={() => setShowConfirmModal(false)}
+                className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSubmitAttendance}
+                disabled={isSubmitting}
+                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Spinner />
+                    Submitting...
+                  </>
+                ) : (
+                  <>
+                    <Send size={16} />
+                    Submit
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

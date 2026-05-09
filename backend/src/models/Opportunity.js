@@ -48,6 +48,40 @@ const opportunitySchema = new mongoose.Schema(
         "Result",
       ],
     },
+    // Track attendance submission status per stage
+    stageAttendanceStatus: [{
+      stage: {
+        type: String,
+        enum: [
+          "Aptitude Test",
+          "Group Discussion",
+          "Technical Interview",
+          "HR Interview",
+          "Result",
+        ],
+      },
+      isSubmitted: {
+        type: Boolean,
+        default: false,
+      },
+      submittedAt: Date,
+      submittedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+      },
+      totalRecords: {
+        type: Number,
+        default: 0,
+      },
+      presentCount: {
+        type: Number,
+        default: 0,
+      },
+      absentCount: {
+        type: Number,
+        default: 0,
+      },
+    }],
   },
   { timestamps: true }
 );

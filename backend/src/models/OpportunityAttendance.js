@@ -39,6 +39,21 @@ const opportunityAttendanceSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    // Submission tracking fields
+    isSubmitted: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    submittedAt: {
+      type: Date,
+      default: null,
+    },
+    submittedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
   },
   { timestamps: true }
 );
