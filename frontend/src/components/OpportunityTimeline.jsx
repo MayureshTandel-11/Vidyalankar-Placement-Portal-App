@@ -258,7 +258,7 @@ const stageOrder = [
         ) : (
           [...timelineEntries].reverse().map((entry, idx) => (
             <div key={idx} className="rounded-lg border border-slate-200 bg-white p-4 hover:shadow-md transition-shadow">
-\              {entry.isStageActivation && (
+              {entry.isStageActivation && (
                 <div className="mb-3 flex items-center gap-2 rounded-lg bg-green-50 p-2 border border-green-200">
                   <CheckCircle size={16} className="text-green-600 flex-shrink-0" />
                   <span className="text-xs font-medium text-green-800">

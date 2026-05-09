@@ -115,8 +115,8 @@ const RegisterPage = () => {
               <input className="input-modern text-xs xs:text-base" placeholder="Full name" onChange={(e) => setForm({ ...form, name: e.target.value })} />
             </div>
             <div className="space-y-1.5 xs:space-y-2">
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-600">Student ID</p>
-              <input className="input-modern text-xs xs:text-base" placeholder="Student ID" onChange={(e) => setForm({ ...form, studentId: e.target.value })} />
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-600">Student Roll Number</p>
+              <input className="input-modern text-xs xs:text-base" placeholder="Student Roll Number" onChange={(e) => setForm({ ...form, studentId: e.target.value })} />
             </div>
             <div className="space-y-1.5 xs:space-y-2">
               <p className="text-xs font-medium uppercase tracking-wide text-slate-600">Department</p>

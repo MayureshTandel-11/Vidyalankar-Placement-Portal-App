@@ -45,7 +45,13 @@ const formatDateTime = (date) => {
  * @returns {string} CSV content
  */
 const generateAttendanceCSV = (attendanceRecords, options = {}) => {
-  const { includeDateColumns = true, includeMarkedBy = true } = options;
+  const {
+    includeDateColumns = true,
+    includeMarkedBy = true,
+    includeSummary = false,
+    includeFacultyInfo = false,
+    stageStatus = null,
+  } = options;
 
   // CSV Headers
   const headers = [
@@ -86,22 +92,64 @@ const generateAttendanceCSV = (attendanceRecords, options = {}) => {
     return cells.join(",");
   });
 
-  // Combine header and data rows
-  const csvContent = [headerRow, ...dataRows].join("\n");
+  const lines = [headerRow, ...dataRows];
+
+  // Add summary section if requested
+  if (includeSummary) {
+    // Empty line for spacing
+    lines.push("");
+
+    // Summary header
+    lines.push("Summary Statistics");
+    lines.push("");
+
+    // Calculate statistics
+    const totalRecords = attendanceRecords.length;
+    const presentCount = attendanceRecords.filter((a) => a.status === "present").length;
+    const absentCount = attendanceRecords.filter((a) => a.status === "absent").length;
+    const pendingCount = attendanceRecords.filter((a) => a.status === "pending").length;
+
+    // Summary rows
+    lines.push(`Total Records,${totalRecords}`);
+    lines.push(`Present,${presentCount}`);
+    lines.push(`Absent,${absentCount}`);
+    lines.push(`Pending,${pendingCount}`);
+    lines.push(`Attendance Rate,"${totalRecords > 0 ? ((presentCount / totalRecords) * 100).toFixed(2) : 0}%"`);
+  }
+
+  // Add faculty info section if requested
+  if (includeFacultyInfo && stageStatus) {
+    lines.push("");
+    lines.push("Submission Details");
+    lines.push("");
+    lines.push(`Submitted At,${formatDateTime(stageStatus.submittedAt)}`);
+    lines.push(`Submitted By,${stageStatus.submittedBy?.name || "Admin"}`);
+    lines.push(`Export Timestamp,${formatDateTime(new Date())}`);
+  }
+
+  // Combine all lines
+  const csvContent = lines.join("\n");
 
   return csvContent;
 };
 
 /**
- * Generate filename for attendance CSV
- * @param {string} driveName - Name of the opportunity/drive
+ * Generate filename for attendance CSV with stage-specific naming
+ * @param {string} driveName - Name of the opportunity/drive (optional, not used for stage-specific filenames)
  * @param {string} stageName - Name of the stage
  * @returns {string} Filename
  */
 const generateAttendanceFilename = (driveName = "attendance", stageName = "") => {
-  const date = new Date();
-  const dateStr = date.toISOString().split("T")[0]; // YYYY-MM-DD
+  // Map stage names to standard filenames as per requirements
+  const stageFilenameMap = {
+    "Aptitude Test": "aptitude_test_attendance",
+    "Group Discussion": "group_discussion_attendance",
+    "Technical Interview": "technical_interview_attendance",
+    "HR Interview": "hr_interview_attendance",
+    "Result": "result_attendance",
+  };
 
+  // Get the standard filename for the stage, or generate one if stage not in map
   const sanitizeName = (name) =>
     String(name)
       .toLowerCase()
@@ -109,10 +157,14 @@ const generateAttendanceFilename = (driveName = "attendance", stageName = "") =>
       .replace(/[^a-z0-9_-]/g, "")
       .substring(0, 50);
 
-  const sanitizedDrive = sanitizeName(driveName);
-  const sanitizedStage = stageName ? `_${sanitizeName(stageName)}` : "";
+  let filename = stageFilenameMap[stageName];
+  if (!filename) {
+    // Fallback for any custom or unrecognized stages
+    filename = `attendance_${sanitizeName(stageName)}`;
+  }
 
-  return `attendance_${sanitizedDrive}${sanitizedStage}_${dateStr}.csv`;
+  // Add .csv extension
+  return `${filename}.csv`;
 };
 
 module.exports = {

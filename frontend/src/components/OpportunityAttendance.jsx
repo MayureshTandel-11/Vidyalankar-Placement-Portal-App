@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import api from "../api";
 import { useOpportunities } from "../context/OpportunitiesContext";
+import { useAuth } from "../context/AuthContext";
 import { getSocket } from "../utils/socket";
 import {
   AlertCircle,
@@ -12,7 +13,7 @@ import {
 } from "lucide-react";
 import { Spinner, StatusMessage } from "./ui";
 
-const STAGES = [
+const RECRUITMENT_STAGES = [
   "Aptitude Test",
   "Group Discussion",
   "Technical Interview",
@@ -22,6 +23,7 @@ const STAGES = [
 
 const OpportunityAttendance = ({ opportunityId, activeStages }) => {
   const { fetchAttendance: fetchAttendanceFromContext } = useOpportunities();
+  const { user } = useAuth();
   const [selectedStage, setSelectedStage] = useState(null);
   const [attendanceList, setAttendanceList] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -35,14 +37,32 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
   const [isDownloading, setIsDownloading] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
+  // ======================================
+  // HELPER: Check if stage is General Update
+  // ======================================
+  const isGeneralUpdate = selectedStage?.toLowerCase() === "general update";
+
+  // ======================================
+  // HELPER: Check if user can download attendance
+  // ======================================
+  const canDownloadAttendance =
+    !isGeneralUpdate &&
+    stageStatus?.isSubmitted === true &&
+    ["admin", "faculty"].includes(user?.role);
+
   // Determine the current stage (most recently activated)
   const getCurrentStage = () => {
     if (!activeStages || activeStages.length === 0) return null;
-    // Find the last stage in STAGES order that's in activeStages
-    for (let i = STAGES.length - 1; i >= 0; i--) {
-      if (activeStages.includes(STAGES[i])) {
-        return STAGES[i];
+    // Find the last stage in RECRUITMENT_STAGES order that's in activeStages
+    // Skip "General Update" as it's not a recruitment stage
+    for (let i = RECRUITMENT_STAGES.length - 1; i >= 0; i--) {
+      if (activeStages.includes(RECRUITMENT_STAGES[i])) {
+        return RECRUITMENT_STAGES[i];
       }
+    }
+    // If no recruitment stages found, General Update might be active
+    if (activeStages.includes("General Update")) {
+      return "General Update";
     }
     return null;
   };
@@ -55,6 +75,13 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
   // Fetch attendance data including stage status
   useEffect(() => {
     if (!selectedStage) {
+      setAttendanceList([]);
+      setStageStatus(null);
+      return;
+    }
+
+    // Skip attendance API calls for General Update stage
+    if (isGeneralUpdate) {
       setAttendanceList([]);
       setStageStatus(null);
       return;
@@ -90,7 +117,7 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
 
     fetchAttendanceData();
     return () => controller.abort();
-  }, [opportunityId, selectedStage]);
+  }, [opportunityId, selectedStage, isGeneralUpdate]);
 
   useEffect(() => {
     console.log('[OpportunityAttendance] Auto-select check:', {
@@ -100,8 +127,12 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
     });
 
     if (!selectedStage && activeStages && activeStages.length > 0) {
-      console.log('[OpportunityAttendance] Auto-selecting first stage:', activeStages[0]);
-      setSelectedStage(activeStages[0]);
+      // Find first recruitment stage (exclude General Update)
+      const stageToSelect = RECRUITMENT_STAGES.find(s => activeStages.includes(s));
+      if (stageToSelect) {
+        console.log('[OpportunityAttendance] Auto-selecting first recruitment stage:', stageToSelect);
+        setSelectedStage(stageToSelect);
+      }
     }
   }, [activeStages]);
 
@@ -255,7 +286,8 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
         <h3 className="text-sm font-semibold text-slate-800 mb-3">Select Stage</h3>
         {/* Stage selector with padding to accommodate badges */}
         <div className="flex gap-2 overflow-x-auto pb-2 pt-3 px-1 -mx-1">
-          {STAGES.map((stage) => {
+          {/* Recruitment stages */}
+          {RECRUITMENT_STAGES.map((stage) => {
             const isActive = stage === selectedStage;
             const isEnabled = activeStages.includes(stage);
             const isCurrent = stage === currentStage;
@@ -288,12 +320,45 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
               </div>
             );
           })}
+
+          {/* General Update stage (if active) */}
+          {activeStages?.includes("General Update") && (
+            <div className="relative flex-shrink-0">
+              <button
+                onClick={() => setSelectedStage("General Update")}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap ${
+                  selectedStage === "General Update"
+                    ? "bg-slate-600 text-white shadow-md"
+                    : "bg-slate-100 text-slate-800 hover:bg-slate-200"
+                }`}
+              >
+                General Update
+              </button>
+              <span className="absolute -top-3 -right-3 px-2 py-0.5 text-xs font-bold bg-slate-500 text-white rounded-full shadow-md border border-slate-600 z-10">
+                Info
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
       {!selectedStage ? (
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-8 text-center">
           <p className="text-sm text-slate-600">Select a stage above to view attendance.</p>
+        </div>
+      ) : isGeneralUpdate ? (
+        // General Update stage - no attendance tracking
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-8 text-center">
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-slate-300 mb-3">
+            <AlertCircle size={24} className="text-slate-700" />
+          </div>
+          <p className="text-base font-medium text-slate-800 mb-2">General Update</p>
+          <p className="text-sm text-slate-600">
+            This stage does not support attendance tracking.
+          </p>
+          <p className="text-xs text-slate-500 mt-2">
+            Attendance features are only available for recruitment stages.
+          </p>
         </div>
       ) : isReadOnly ? (
         <>
@@ -519,7 +584,7 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
       )}
 
       {/* Fixed Footer with Action Buttons */}
-      {selectedStage && !isReadOnly && attendanceList.length > 0 && (
+      {selectedStage && !isReadOnly && !isGeneralUpdate && attendanceList.length > 0 && (
         <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-lg p-4 flex gap-3 justify-end">
           <button
             onClick={handleDownloadAttendance}

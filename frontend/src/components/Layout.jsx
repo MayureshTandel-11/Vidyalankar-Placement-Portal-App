@@ -40,14 +40,14 @@ const Layout = ({ children, role = "Student" }) => {
           </div>
 
           <div className="relative flex items-center gap-2 flex-shrink-0">
-            <button
+            {/* <button
               onClick={() => setShowNotifications((current) => !current)}
               className="h-9 w-9 flex items-center justify-center relative rounded-md border border-slate-200 bg-white/85 text-slate-700 transition hover:border-indigo-300 hover:text-indigo-600 flex-shrink-0"
               aria-label="Toggle notifications"
             >
               <Bell size={18} />
               <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.75)]" />
-            </button>
+            </button> */}
             <button
               onClick={() => setShowProfile((current) => !current)}
               className="h-9 px-2 flex items-center gap-1.5 rounded-md border border-slate-200 bg-white/85 text-slate-700 transition hover:border-indigo-300 hover:text-indigo-600 flex-shrink-0"

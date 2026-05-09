@@ -10,25 +10,59 @@ const { generateAttendanceCSV, generateAttendanceFilename } = require("../utils/
 
 const router = express.Router();
 
+// ======================================
+// HELPER: Check if stage is General Update
+// ======================================
+const isGeneralUpdate = (stage) => stage?.toLowerCase() === "general update";
+
+// ======================================
+// HELPER: Validate stage (reject General Update)
+// ======================================
+const validateStageNotGeneralUpdate = (stage) => {
+  if (isGeneralUpdate(stage)) {
+    return {
+      isValid: false,
+      error: {
+        status: 400,
+        message: "Attendance is not applicable for General Update stage"
+      }
+    };
+  }
+  return { isValid: true };
+};
+
 // GET /api/attendance/:opportunityId/:stage
 // Faculty and Admin only - get attendance list for a specific stage
+// Allows viewing both active stages (for editing) and closed/archived stages (for historical viewing)
 router.get("/:opportunityId/:stage", protect, allowRoles("faculty", "admin"), async (req, res) => {
   try {
     const { opportunityId, stage } = req.params;
+
+    // Validate stage is not General Update
+    const stageValidation = validateStageNotGeneralUpdate(stage);
+    if (!stageValidation.isValid) {
+      return res.status(stageValidation.error.status).json({
+        success: false,
+        message: stageValidation.error.message
+      });
+    }
 
     // Validate ObjectIds
     if (!mongoose.Types.ObjectId.isValid(opportunityId)) {
       return res.status(400).json({ message: "Invalid opportunity ID format" });
     }
 
-    // Verify the opportunity exists and stage is active
+    // Verify the opportunity exists
     const opportunity = await Opportunity.findById(opportunityId);
     if (!opportunity) {
       return res.status(404).json({ message: "Opportunity not found" });
     }
 
-    if (!opportunity.activeStages.includes(stage)) {
-      return res.status(403).json({ message: "Stage not yet activated for this opportunity" });
+    // Verify the stage has been registered (either active or historical)
+    // Allow viewing any stage that has been activated at some point
+    const isValidStage = opportunity.stageAttendanceStatus?.some((s) => s.stage === stage) || opportunity.activeStages.includes(stage);
+    if (!isValidStage) {
+      return res.status(403).json({ message: "Invalid stage for this opportunity" });
     }
 
     // Get submission status for this stage
@@ -101,6 +135,15 @@ router.patch("/:opportunityId", protect, allowRoles("faculty", "admin"), async (
   try {
     const { opportunityId } = req.params;
     const { studentId, stage, status } = req.body;
+
+    // Validate stage is not General Update
+    const stageValidation = validateStageNotGeneralUpdate(stage);
+    if (!stageValidation.isValid) {
+      return res.status(stageValidation.error.status).json({
+        success: false,
+        message: stageValidation.error.message
+      });
+    }
 
     // Validate ObjectId
     if (!mongoose.Types.ObjectId.isValid(opportunityId)) {
@@ -215,6 +258,15 @@ router.get("/:opportunityId/student/:studentId", protect, async (req, res) => {
 router.post("/submit/:opportunityId/:stage", protect, allowRoles("faculty", "admin"), async (req, res) => {
   try {
     const { opportunityId, stage } = req.params;
+
+    // Validate stage is not General Update
+    const stageValidation = validateStageNotGeneralUpdate(stage);
+    if (!stageValidation.isValid) {
+      return res.status(stageValidation.error.status).json({
+        success: false,
+        message: stageValidation.error.message
+      });
+    }
 
     // Validate ObjectId
     if (!mongoose.Types.ObjectId.isValid(opportunityId)) {
@@ -332,9 +384,24 @@ router.post("/submit/:opportunityId/:stage", protect, allowRoles("faculty", "adm
 
 // GET /api/attendance/download/:opportunityId/:stage
 // Faculty and Admin only - download attendance as CSV
+// Requirements:
+// - Attendance must be submitted for this stage
+// - Stage must have been activated at some point
+// - Works for both active and closed stages
+// - Only admin/faculty can download
+// - General Update stage is not allowed
 router.get("/download/:opportunityId/:stage", protect, allowRoles("faculty", "admin"), async (req, res) => {
   try {
     const { opportunityId, stage } = req.params;
+
+    // Validate stage is not General Update
+    const stageValidation = validateStageNotGeneralUpdate(stage);
+    if (!stageValidation.isValid) {
+      return res.status(stageValidation.error.status).json({
+        success: false,
+        message: stageValidation.error.message
+      });
+    }
 
     // Validate ObjectId
     if (!mongoose.Types.ObjectId.isValid(opportunityId)) {
@@ -345,6 +412,13 @@ router.get("/download/:opportunityId/:stage", protect, allowRoles("faculty", "ad
     const opportunity = await Opportunity.findById(opportunityId);
     if (!opportunity) {
       return res.status(404).json({ message: "Opportunity not found" });
+    }
+
+    // Verify attendance has been submitted for this specific stage
+    // This is the ONLY requirement - submission status, not stage activation status
+    const stageStatus = opportunity.stageAttendanceStatus?.find((s) => s.stage === stage);
+    if (!stageStatus?.isSubmitted) {
+      return res.status(403).json({ message: "Attendance for this stage has not been submitted yet" });
     }
 
     // Fetch all attendance records for this stage
@@ -384,10 +458,13 @@ router.get("/download/:opportunityId/:stage", protect, allowRoles("faculty", "ad
       (a.studentId?.name || "").localeCompare(b.studentId?.name || "")
     );
 
-    // Generate CSV
+    // Generate CSV with metadata
     const csvContent = generateAttendanceCSV(enrichedRecords, {
       includeDateColumns: true,
       includeMarkedBy: true,
+      includeSummary: true,
+      includeFacultyInfo: true,
+      stageStatus,
     });
 
     // Generate filename

@@ -86,7 +86,7 @@ const LoginPage = () => {
         {form.role === "student" ? (
           <div className="space-y-2 xs:space-y-3">
             <div className="space-y-1.5 xs:space-y-2">
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-600">Student ID or Email</p>
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-600"> Roll Number or Email</p>
               <input className="input-modern text-xs xs:text-base" placeholder="Enter your student ID or email" onChange={(e) => setForm({ ...form, identifier: e.target.value })} />
             </div>
             <div className="space-y-1.5 xs:space-y-2">
