@@ -99,6 +99,8 @@ const opportunitySchema = new mongoose.Schema(
           type: String, // studentId
         },
       ],
+      nextRoundName: { type: String, trim: true },
+      companyName: { type: String, trim: true },
       selectedAt: Date,
       selectedBy: {
         type: mongoose.Schema.Types.ObjectId,

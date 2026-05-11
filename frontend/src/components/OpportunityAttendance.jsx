@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
+import toast from "react-hot-toast";
 import api from "../api";
+import { extractApiError } from "../utils/apiClient";
 import { getSocket } from "../utils/socket";
 import {
   AlertCircle,
@@ -44,6 +46,7 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
   const [manualSelectedIds, setManualSelectedIds] = useState([]);
   const [isSavingManual, setIsSavingManual] = useState(false);
   const [manualSelectionsLoaded, setManualSelectionsLoaded] = useState(false);
+  const [manualSelectionCommitted, setManualSelectionCommitted] = useState(false);
 
   // ======================================
   // HELPER: Check if stage is General Update
@@ -82,12 +85,20 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
       );
       const selections = response.data?.data?.selectedStudentIds || [];
       setManualSelectedIds(selections);
+      if (selections.length > 0) {
+        setManualSelectionCommitted(true);
+      }
       setManualSelectionsLoaded(true);
     } catch (err) {
       console.error("[FETCH MANUAL SELECTIONS ERROR]", err);
       setManualSelectionsLoaded(true);
     }
   }, [opportunityId]);
+
+  useEffect(() => {
+    setManualSelectionCommitted(false);
+    setManualSelectionsLoaded(false);
+  }, [selectedStage]);
 
   // Fetch attendance data including stage status
   useEffect(() => {
@@ -121,9 +132,12 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
         // Call API directly to get stage status
         const response = await api.get(`/attendance/${opportunityId}/${selectedStage}`);
         const newAttendanceList = response.data?.data || [];
+        const sortedList = [...newAttendanceList].sort((a, b) =>
+          (a.studentId?.name || "").localeCompare(b.studentId?.name || "", "en", { sensitivity: "base" })
+        );
         const newStageStatus = response.data?.stageStatus || {};
 
-        setAttendanceList(newAttendanceList);
+        setAttendanceList(sortedList);
         setStageStatus(newStageStatus);
 
         // Load manual selections if stage is submitted
@@ -261,7 +275,6 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
         { selectedStudentIds: manualSelectedIds }
       );
 
-      // Defensive: validate response
       if (!response?.data) {
         throw new Error("Empty response from server");
       }
@@ -270,12 +283,10 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
         console.log("[OPPORTUNITY ATTENDANCE ✓] Manual selections saved successfully");
       }
 
-      // Show success message
-      const successMsg = `✓ Successfully saved ${manualSelectedIds.length} selected student(s) for next round`;
-      console.log(successMsg);
-      setError(""); // Clear any previous errors
+      setManualSelectionCommitted(true);
+      toast.success(`Selection saved for ${manualSelectedIds.length} student(s).`);
+      setError("");
 
-      // Emit socket event for real-time updates
       const socket = getSocket();
       if (socket) {
         socket.emit("manual:selection:saved", {
@@ -284,13 +295,23 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
           selectedCount: manualSelectedIds.length,
         });
       }
+
+      try {
+        const att = await api.get(`/attendance/${opportunityId}/${selectedStage}`);
+        const list = att.data?.data || [];
+        setAttendanceList(
+          [...list].sort((a, b) =>
+            (a.studentId?.name || "").localeCompare(b.studentId?.name || "", "en", { sensitivity: "base" })
+          )
+        );
+      } catch {
+        /* non-fatal */
+      }
     } catch (err) {
-      const errorMessage =
-        err.response?.data?.message ||
-        err.message ||
-        "Failed to save manual selections. Please try again.";
+      const errorMessage = extractApiError(err, "Failed to save manual selections. Please try again.");
 
       setError(errorMessage);
+      toast.error(errorMessage);
       console.error("[OPPORTUNITY ATTENDANCE] Manual selection save error:", {
         opportunityId,
         stage: selectedStage,
@@ -894,7 +915,7 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
       {selectedStage && !isReadOnly && !isGeneralUpdate && attendanceList.length > 0 && (
         <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-lg p-4 flex gap-3 justify-end">
           {/* Manual Selection Save Button */}
-          {isStageSubmitted && viewMode === "manual-select" && (
+          {isStageSubmitted && viewMode === "manual-select" && !manualSelectionCommitted && (
             <button
               onClick={handleSaveManualSelections}
               disabled={isSavingManual || manualSelectedIds.length === 0}
@@ -908,7 +929,7 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
               ) : (
                 <>
                   <Users size={16} />
-                  Save Selections ({manualSelectedIds.length})
+                  Save Selection ({manualSelectedIds.length})
                 </>
               )}
             </button>

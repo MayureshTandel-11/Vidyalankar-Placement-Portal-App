@@ -41,7 +41,10 @@ const StudentManagement = () => {
 
         // Defensive: validate responses
         const yearsData = yearsRes?.data?.data;
-        const deptsData = deptRes?.data?.data;
+        const deptsPayload = deptRes?.data?.data;
+        const deptList = Array.isArray(deptsPayload)
+          ? deptsPayload
+          : deptsPayload?.departments || [];
 
         if (Array.isArray(yearsData)) {
           setYears(yearsData);
@@ -50,10 +53,10 @@ const StudentManagement = () => {
           setYears([]);
         }
 
-        if (Array.isArray(deptsData)) {
-          setDepartments(deptsData);
+        if (Array.isArray(deptList)) {
+          setDepartments(deptList);
         } else {
-          console.warn("[STUDENT MGMT] Invalid departments response:", deptsData);
+          console.warn("[STUDENT MGMT] Invalid departments response:", deptsPayload);
           setDepartments([]);
         }
       } catch (err) {
@@ -97,15 +100,21 @@ const StudentManagement = () => {
       const response = await api.get("/student/management/list", { params });
 
       // Defensive: validate response structure
-      const studentsData = response?.data?.data;
-      const paginationData = response?.data?.pagination;
+      const raw = response?.data?.data;
+      const studentsData = Array.isArray(raw) ? raw : raw?.students;
+      const paginationData = raw?.pagination || response?.data?.pagination;
 
       if (!Array.isArray(studentsData)) {
-        console.warn("[STUDENT MGMT] Invalid students response format", studentsData);
+        console.warn("[STUDENT MGMT] Invalid students response format", raw);
         setStudents([]);
         setTotalPages(1);
       } else {
-        setStudents(studentsData);
+        const sorted = [...studentsData].sort((a, b) =>
+          (a.fullName || a.name || "").localeCompare(b.fullName || b.name || "", "en", {
+            sensitivity: "base",
+          })
+        );
+        setStudents(sorted);
         setTotalPages(paginationData?.totalPages || 1);
       }
     } catch (err) {
@@ -154,18 +163,27 @@ const StudentManagement = () => {
         console.log("[STUDENT MGMT] Downloading resume for:", { studentId, studentName });
       }
 
-      const response = await api.get(`/student/profile/resume/download/${studentId}`, {
+      const response = await api.get(`/student/resume/download/${studentId}`, {
         responseType: "blob",
       });
 
-      // Defensive: validate response is a valid blob
       if (!response?.data) {
         throw new Error("Empty response from server");
       }
 
       const blob = response.data;
+      if (blob.type && blob.type.includes("application/json")) {
+        const text = await blob.text();
+        let msg = "Resume could not be downloaded";
+        try {
+          const j = JSON.parse(text);
+          msg = j?.error?.message || j?.message || msg;
+        } catch {
+          /* ignore */
+        }
+        throw new Error(msg);
+      }
 
-      // Validate blob size
       if (blob.size === 0) {
         throw new Error("Resume file is empty");
       }
@@ -174,7 +192,9 @@ const StudentManagement = () => {
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `${studentName.replace(/\s+/g, "_")}_${studentId}.pdf`;
+      const extGuess = response.headers["content-disposition"]?.match(/\.[a-z0-9]+"?$/i);
+      const ext = extGuess ? extGuess[0].replace(/"/g, "") : ".pdf";
+      link.download = `${studentName.replace(/\s+/g, "_")}_${studentId}${ext}`;
 
       // Append to body (required in some browsers)
       document.body.appendChild(link);

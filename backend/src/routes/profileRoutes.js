@@ -131,4 +131,12 @@ router.get(
   downloadResume
 );
 
+// Legacy path (some clients called /profile/resume/download/...)
+router.get(
+  "/profile/resume/download/:studentId",
+  protect,
+  allowRoles("faculty", "admin"),
+  downloadResume
+);
+
 module.exports = router;

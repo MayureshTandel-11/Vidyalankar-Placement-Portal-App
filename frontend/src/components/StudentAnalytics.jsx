@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import api from "../api";
+import { extractApiError } from "../utils/apiClient";
 import { useAuth } from "../context/AuthContext";
 import { TrendingUp, Target, CheckCircle, AlertCircle } from "lucide-react";
 import { Spinner } from "./ui";
@@ -47,7 +48,7 @@ const StudentAnalytics = ({ studentId }) => {
       const response = await api.get(`/student/analytics/${studentId}`);
       setAnalytics(response.data?.data);
     } catch (err) {
-      const message = err.response?.data?.message || "Failed to fetch analytics";
+      const message = extractApiError(err, "Failed to fetch analytics");
       setError(message);
       console.error("[FETCH ANALYTICS ERROR]", err);
     } finally {
@@ -74,7 +75,7 @@ const StudentAnalytics = ({ studentId }) => {
       setOpportunityDetails(response.data?.data);
       setShowDetailsModal(true);
     } catch (err) {
-      setError("Failed to fetch opportunity details");
+      setError(extractApiError(err, "Failed to fetch opportunity details"));
       console.error("[FETCH OPPORTUNITY DETAILS ERROR]", err);
     }
   };

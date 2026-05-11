@@ -1,6 +1,9 @@
+const path = require("path");
+const fs = require("fs");
 const User = require("../models/User");
 const { ok, fail } = require("../utils/apiResponse");
 const { sanitizeUserResponse, sanitizeString } = require("../utils/sanitize");
+const { ALLOWED_EXT, MIME_FOR_EXT } = require("../middleware/uploadMiddleware");
 
 // Validation helper functions
 const validateEmail = (email) => {
@@ -18,8 +21,9 @@ const validatePhone = (phone) => {
   return /^\d{10}$/.test(phone);
 };
 
-const isPdfFile = (filename) => {
-  return filename.endsWith(".pdf") || filename.includes("pdf");
+const isAllowedResumeFile = (filename) => {
+  const ext = path.extname(filename || "").toLowerCase();
+  return ALLOWED_EXT.has(ext);
 };
 
 // 1. Get Student Profile
@@ -44,7 +48,13 @@ const getStudentProfile = async (req, res) => {
       certifications: profile.certifications || [],
       projects: profile.projects || [],
       professionalLinks: profile.professionalLinks || { linkedinProfile: "", githubProfile: "", almaShineProfile: "" },
-      resume: profile.resume || { resumeUrl: "", uploadedAt: null },
+      resume: profile.resume || {
+        fileName: "",
+        filePath: "",
+        mimeType: "",
+        resumeUrl: "",
+        uploadedAt: null,
+      },
     };
 
     return ok(res, { profile: profileWithDefaults });
@@ -406,9 +416,8 @@ const uploadResume = async (req, res) => {
       return fail(res, 400, "Resume file is required");
     }
 
-    // Validate file type
-    if (!isPdfFile(req.file.originalname)) {
-      return fail(res, 400, "Resume must be a PDF file");
+    if (!isAllowedResumeFile(req.file.originalname)) {
+      return fail(res, 400, "Resume must be a PDF, DOC, or DOCX file");
     }
 
     // Validate file size (5MB max)
@@ -417,15 +426,18 @@ const uploadResume = async (req, res) => {
       return fail(res, 400, "Resume file size must be less than 5MB");
     }
 
-    // Construct resume URL/path
-    // Multer stores files at uploads/resumes/{filename} (see uploadMiddleware.js destination)
-    const resumeUrl = `uploads/resumes/${req.file.filename}`;
+    const relativePath = `uploads/resumes/${req.file.filename}`;
+    const ext = path.extname(req.file.originalname || "").toLowerCase();
+    const mimeType = req.file.mimetype || MIME_FOR_EXT[ext] || "application/octet-stream";
 
     const student = await User.findByIdAndUpdate(
       req.user._id,
       {
         resume: {
-          resumeUrl: sanitizeString(resumeUrl),
+          fileName: sanitizeString(req.file.originalname || req.file.filename),
+          filePath: sanitizeString(relativePath),
+          mimeType: sanitizeString(mimeType),
+          resumeUrl: sanitizeString(relativePath),
           uploadedAt: new Date(),
         },
       },
@@ -558,54 +570,40 @@ const downloadResume = async (req, res) => {
       return fail(res, 403, "You can only download resumes for students in your department");
     }
 
-    // Check if resume exists
-    if (!student.resume || !student.resume.resumeUrl) {
+    const rel = student.resume?.filePath || student.resume?.resumeUrl;
+    if (!rel || !String(rel).trim()) {
       return fail(res, 404, "No resume uploaded for this student");
     }
 
-    const resumePath = student.resume.resumeUrl;
+    console.log(`[RESUME DOWNLOAD] Student: ${student.name} (${studentId}), Path: ${rel}, By: ${req.user.email}`);
 
-    console.log(`[RESUME DOWNLOAD] Student: ${student.name} (${studentId}), Path: ${resumePath}, By: ${req.user.email}`);
-
-    // For now, return resume URL - in production, this would serve the file
-    // If resumePath is a URL, redirect to it
-    // If it's a local path, serve the file using res.download()
-
-    if (resumePath.startsWith("http")) {
-      // Remote URL - redirect to it
-      console.log("[RESUME] Redirecting to external URL:", resumePath);
-      return res.redirect(resumePath);
-    } else {
-      // Local file - serve it
-      const path = require("path");
-      const fs = require("fs");
-      const filePath = path.join(__dirname, "../../", resumePath);
-
-      console.log("[RESUME] Serving local file:", filePath);
-
-      // Check if file exists before attempting download
-      if (!fs.existsSync(filePath)) {
-        console.error("[RESUME] File not found:", filePath);
-        return fail(res, 404, "Resume file not found on server");
-      }
-
-      // Set proper headers for PDF download
-      res.setHeader("Content-Type", "application/pdf");
-      res.setHeader(
-        "Content-Disposition",
-        `attachment; filename="${encodeURIComponent(`${student.fullName || student.name || "resume"}_${studentId}.pdf`)}"`
-      );
-
-      // Stream the file
-      return res.download(filePath, `${student.fullName || student.name || "resume"}_${studentId}.pdf`, (err) => {
-        if (err) {
-          console.error("[RESUME DOWNLOAD ERROR]", err.message);
-          // Response already sent, just log error
-        } else {
-          console.log("[RESUME ✓] Successfully sent resume for:", student.email);
-        }
-      });
+    if (String(rel).startsWith("http")) {
+      console.log("[RESUME] Redirecting to external URL:", rel);
+      return res.redirect(rel);
     }
+
+    const absolutePath = path.join(__dirname, "../../", rel);
+    console.log("[RESUME] Serving local file:", absolutePath);
+
+    if (!fs.existsSync(absolutePath)) {
+      console.error("[RESUME] File not found:", absolutePath);
+      return fail(res, 404, "Resume file not found on server");
+    }
+
+    const ext = path.extname(absolutePath).toLowerCase();
+    const mime = student.resume?.mimeType || MIME_FOR_EXT[ext] || "application/octet-stream";
+    const baseName = (student.resume?.fileName && path.basename(student.resume.fileName)) || `${student.fullName || student.name || "resume"}_${studentId}${ext}`;
+
+    res.setHeader("Content-Type", mime);
+    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(baseName)}"`);
+
+    return res.download(absolutePath, baseName, (err) => {
+      if (err) {
+        console.error("[RESUME DOWNLOAD ERROR]", err.message);
+      } else {
+        console.log("[RESUME ✓] Successfully sent resume for:", student.email);
+      }
+    });
   } catch (error) {
     console.error("[DOWNLOAD RESUME ERROR]", error);
     return fail(res, 500, "Error downloading resume", error.message);

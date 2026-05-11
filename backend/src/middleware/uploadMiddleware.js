@@ -1,13 +1,20 @@
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
+const crypto = require("crypto");
+
+const ALLOWED_EXT = new Set([".pdf", ".doc", ".docx"]);
+const MIME_FOR_EXT = {
+  ".pdf": "application/pdf",
+  ".doc": "application/msword",
+  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+};
 
 // Configure storage
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const uploadDir = path.join(__dirname, "../../uploads/resumes");
 
-    // Create directory if it doesn't exist
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
@@ -15,39 +22,31 @@ const storage = multer.diskStorage({
     cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
-    const studentId = req.user?._id || "unknown";
-    const timestamp = Date.now();
-    const filename = `${studentId}_${timestamp}.pdf`;
-    cb(null, filename);
+    const ext = path.extname(file.originalname || "").toLowerCase();
+    const safeExt = ALLOWED_EXT.has(ext) ? ext : ".pdf";
+    const base =
+      (req.user?.studentId && String(req.user.studentId).replace(/[^\w-]/g, "")) ||
+      String(req.user?._id || "user");
+    cb(null, `${base}_${Date.now()}_${crypto.randomBytes(6).toString("hex")}${safeExt}`);
   },
 });
 
-// File filter to accept only PDF files
 const fileFilter = (req, file, cb) => {
-  // Check file extension
-  const ext = path.extname(file.originalname).toLowerCase();
-  if (ext !== ".pdf") {
-    return cb(new Error("Only PDF files are allowed"));
+  const ext = path.extname(file.originalname || "").toLowerCase();
+  if (!ALLOWED_EXT.has(ext)) {
+    return cb(new Error("Only PDF, DOC, or DOCX files are allowed"));
   }
-
-  // Check MIME type
-  if (file.mimetype !== "application/pdf") {
-    return cb(new Error("File must be a valid PDF document"));
-  }
-
   cb(null, true);
 };
 
-// Configure multer
 const upload = multer({
-  storage: storage,
-  fileFilter: fileFilter,
+  storage,
+  fileFilter,
   limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB limit
+    fileSize: 5 * 1024 * 1024,
   },
 });
 
-// Custom error handling middleware for multer errors
 const handleUploadError = (err, req, res, next) => {
   if (err instanceof multer.MulterError) {
     if (err.code === "LIMIT_FILE_SIZE") {
@@ -94,7 +93,6 @@ const handleUploadError = (err, req, res, next) => {
   next();
 };
 
-// Middleware to validate file was uploaded
 const validateFileUpload = (req, res, next) => {
   if (!req.file) {
     return res.status(400).json({
@@ -102,12 +100,11 @@ const validateFileUpload = (req, res, next) => {
       data: null,
       error: {
         message: "No file uploaded",
-        details: "Please select a PDF file to upload",
+        details: "Please select a resume file to upload",
       },
     });
   }
 
-  // Additional validation
   if (!req.user || !req.user._id) {
     return res.status(401).json({
       success: false,
@@ -126,4 +123,6 @@ module.exports = {
   upload,
   handleUploadError,
   validateFileUpload,
+  ALLOWED_EXT,
+  MIME_FOR_EXT,
 };

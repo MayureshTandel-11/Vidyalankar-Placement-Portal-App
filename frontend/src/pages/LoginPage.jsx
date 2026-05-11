@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion as Motion } from "framer-motion";
 import { ShieldCheck, UserCog } from "lucide-react";
-import api, { extractApiData } from "../api";
+import toast from "react-hot-toast";
+import api, { extractApiData, extractApiError } from "../api";
 import { useAuth } from "../context/AuthContext";
 import { PrimaryButton, StatusMessage } from "../components/ui";
 import PasswordInput from "../components/PasswordInput";
@@ -49,7 +50,16 @@ const LoginPage = () => {
       login(data.accessToken, data.user);
       navigate("/");
     } catch (err) {
-      setError(err.response?.data?.message || "Login failed");
+      const status = err.response?.status;
+      const apiMsg = extractApiError(err, "Login failed");
+      let display = apiMsg;
+      if (!err.response) {
+        display = "Network error. Check your connection and try again.";
+      } else if (status >= 500) {
+        display = "Server error. Please try again shortly.";
+      }
+      setError(display);
+      toast.error(display);
     } finally {
       setLoading(false);
     }

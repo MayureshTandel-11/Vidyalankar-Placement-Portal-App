@@ -5,18 +5,28 @@ import { Search, X } from "lucide-react";
  * Searchable student selection component for next round
  * Allows faculty/admin to search and select multiple students
  */
-const SearchableStudentSelect = ({ students, selectedIds, onSelectionChange }) => {
+const SearchableStudentSelect = ({
+  students,
+  selectedIds,
+  onSelectionChange,
+  placeholder = "Search by name, email, or PRN...",
+}) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [expanded, setExpanded] = useState(false);
 
-  // Debounced search filter
+  const sortedStudents = useMemo(() => {
+    return [...(students || [])].sort((a, b) =>
+      (a.studentId?.name || "").localeCompare(b.studentId?.name || "", "en", { sensitivity: "base" })
+    );
+  }, [students]);
+
   const filteredStudents = useMemo(() => {
     if (!searchTerm.trim()) {
-      return students;
+      return sortedStudents;
     }
 
     const query = searchTerm.toLowerCase();
-    return students.filter((student) => {
+    return sortedStudents.filter((student) => {
       const name = (student.studentId?.name || "").toLowerCase();
       const email = (student.studentId?.email || "").toLowerCase();
       const studentId = (student.studentId?.studentId || "").toLowerCase();
@@ -24,7 +34,7 @@ const SearchableStudentSelect = ({ students, selectedIds, onSelectionChange }) =
 
       return name.includes(query) || email.includes(query) || studentId.includes(query) || prn.includes(query);
     });
-  }, [students, searchTerm]);
+  }, [sortedStudents, searchTerm]);
 
   const handleToggle = useCallback(
     (studentId) => {
@@ -58,7 +68,7 @@ const SearchableStudentSelect = ({ students, selectedIds, onSelectionChange }) =
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
-            placeholder="Search by name, email, or PRN..."
+            placeholder={placeholder}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-10 pr-4 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"

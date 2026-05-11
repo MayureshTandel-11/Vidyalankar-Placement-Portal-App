@@ -8,8 +8,9 @@ import {
   useMemo,
 } from "react";
 import api from "../api";
-import { extractApiData } from "../utils/apiClient";
+import { extractApiData, getAccessToken } from "../utils/apiClient";
 import { deduplicator } from "../utils/requestDeduplication";
+import { useAuth } from "./AuthContext";
 
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
@@ -66,6 +67,8 @@ const opportunitiesReducer = (state, action) => {
           },
         },
       };
+    case "RESET_ALL":
+      return { ...initialState };
     default:
       return state;
   }
@@ -84,6 +87,7 @@ const OpportunitiesContext = createContext();
 
 export const OpportunitiesProvider = ({ children }) => {
   const [state, dispatch] = useReducer(opportunitiesReducer, initialState);
+  const { isHydrated, token } = useAuth();
 
   // Track mount/unmount cycle for deduplication cleanup (NOT for guarding fetches)
   const isMountedRef = useRef(true);
@@ -169,35 +173,43 @@ export const OpportunitiesProvider = ({ children }) => {
   }, [state.lastFetch, state.opportunities]);
 
   /**
-   * Initial fetch on provider mount
-   * StrictMode-safe: deduplicator prevents duplicate requests
-   * No mount guards needed - deduplicator handles everything
+   * After auth hydration, fetch only when an access token exists (avoids 401 race on refresh).
+   * Re-fetch when token appears (post-login). Reset cache on logout.
    */
   useEffect(() => {
-    // Mark component as mounted
     isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
-    if (process.env.NODE_ENV === "development") {
-      console.log("[OPPORTUNITIES] Provider mounted, triggering fetch");
+  const fetchOpportunitiesRef = useRef(fetchOpportunities);
+  fetchOpportunitiesRef.current = fetchOpportunities;
+
+  useEffect(() => {
+    if (!isHydrated) return;
+
+    const hasToken = Boolean(token || getAccessToken());
+    if (!hasToken) {
+      dispatch({ type: "RESET_ALL" });
+      deduplicator.clear("opportunities_fetch");
+      return;
     }
 
-    // Fetch opportunities on mount
-    // The deduplicator will prevent duplicate requests even if StrictMode remounts
-    fetchOpportunities(false);
+    if (process.env.NODE_ENV === "development") {
+      console.log("[OPPORTUNITIES] Auth ready — fetching opportunities");
+    }
+    fetchOpportunitiesRef.current(false);
+  }, [isHydrated, token]);
 
-    // Cleanup on unmount
-    return () => {
-      // Mark component as unmounted
-      isMountedRef.current = false;
-
-      if (process.env.NODE_ENV === "development") {
-        console.log("[OPPORTUNITIES] Provider unmounted");
-      }
-      // CRITICAL: Do NOT clear deduplicator here
-      // Clearing it would abort valid in-flight requests
-      // Let promises complete naturally or get cancelled by AbortController
+  useEffect(() => {
+    const onLogout = () => {
+      dispatch({ type: "RESET_ALL" });
+      deduplicator.clear("opportunities_fetch");
     };
-  }, []); // Empty dependencies - runs only on mount/unmount
+    window.addEventListener("auth:logout", onLogout);
+    return () => window.removeEventListener("auth:logout", onLogout);
+  }, []);
 
   /**
    * Fetch timeline with caching and deduplication

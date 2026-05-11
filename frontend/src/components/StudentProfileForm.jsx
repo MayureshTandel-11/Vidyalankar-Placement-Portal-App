@@ -1,6 +1,6 @@
 import { useState, useEffect, forwardRef, useImperativeHandle } from "react";
 import { BookOpen, Code, Award, Briefcase, Link as LinkIcon, FileText, X, Plus, ChevronDown, ChevronUp, AlertCircle, CheckCircle, Loader } from "lucide-react";
-import api, { extractApiData, extractApiError } from "../api";
+import api, { extractApiData, extractApiError, getApiUrl } from "../api";
 import { PrimaryButton, StatusMessage } from "./ui";
 import SKILLS_BY_DEPARTMENT from "../constants/skillsByDepartment";
 
@@ -1013,10 +1013,12 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
               <div className="space-y-4">
                 <label className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-purple-300 p-6 hover:bg-purple-100 cursor-pointer transition-colors">
                   <FileText size={40} className="mb-2 text-purple-600" />
-                  <span className="text-sm font-medium text-purple-900">Click to upload resume (PDF, max 5MB)</span>
+                  <span className="text-sm font-medium text-purple-900">
+                    Click to upload resume (PDF, DOC, DOCX — max 5MB)
+                  </span>
                   <input
                     type="file"
-                    accept=".pdf"
+                    accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     onChange={uploadResume}
                     className="hidden"
                   />
@@ -1035,7 +1037,11 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
                       </div>
                     </div>
                     <a
-                      href={formData.resume.resumeUrl}
+                      href={
+                        formData.resume.resumeUrl?.startsWith("http")
+                          ? formData.resume.resumeUrl
+                          : `${String(getApiUrl() || "").replace(/\/api\/?$/i, "")}/${String(formData.resume.resumeUrl || "").replace(/^\//, "")}`
+                      }
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-purple-600 hover:text-purple-700 text-sm font-medium"

@@ -2,7 +2,7 @@ const User = require("../models/User");
 const Opportunity = require("../models/Opportunity");
 const OpportunityAttendance = require("../models/OpportunityAttendance");
 const { sanitizeString } = require("../utils/sanitize");
-const DEPARTMENTS = require("../constants/departments");
+const { ok } = require("../utils/apiResponse");
 
 /**
  * Get all students (Faculty/Admin only)
@@ -54,15 +54,14 @@ const getAllStudents = async (req, res) => {
 
     const total = await User.countDocuments(query);
 
-    return res.status(200).json({
-      data: students,
+    return ok(res, {
+      students,
       pagination: {
         total,
         page: Number(page),
         limit: Number(limit),
-        totalPages: Math.ceil(total / limit),
+        totalPages: Math.ceil(total / Number(limit)) || 1,
       },
-      message: "Students fetched successfully",
     });
   } catch (error) {
     console.error("[GET STUDENTS ERROR]", error);

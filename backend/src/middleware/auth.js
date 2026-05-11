@@ -135,8 +135,14 @@ const verifyRefreshToken = async (req, res, next) => {
     req.user = user;
     return next();
   } catch (error) {
-    console.error(`[AUTH] Unexpected error during refresh token verification: ${error.message}`);
-    return res.status(401).json({ message: "Token refresh failed" });
+    console.error(
+      `[AUTH] Unexpected error during refresh token verification: ${error.message}`,
+      process.env.NODE_ENV === "development" ? error.stack : ""
+    );
+    return res.status(401).json({
+      message: "Token refresh failed",
+      requiresLogin: true,
+    });
   }
 };
 

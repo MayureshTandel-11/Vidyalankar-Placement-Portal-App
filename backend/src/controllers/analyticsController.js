@@ -2,6 +2,8 @@ const User = require("../models/User");
 const Opportunity = require("../models/Opportunity");
 const OpportunityAttendance = require("../models/OpportunityAttendance");
 const mongoose = require("mongoose");
+const { sanitizeString } = require("../utils/sanitize");
+const { isValidDepartment } = require("../constants/departments");
 
 /**
  * Get analytics for a student
@@ -222,27 +224,57 @@ const getOpportunityAnalytics = async (req, res) => {
  */
 const getClassAnalytics = async (req, res) => {
   try {
+    const { department: deptParam, year: yearParam, search: searchParam } = req.query;
+
     // Build query based on role
     let departmentQuery = {};
     if (req.user.role === "faculty") {
       departmentQuery = { department: req.user.department };
+    } else if (req.user.role === "admin" && deptParam && isValidDepartment(sanitizeString(deptParam))) {
+      departmentQuery = { department: sanitizeString(deptParam) };
     }
+
+    const yearFilter =
+      yearParam && ["1st Year", "2nd Year", "3rd Year", "4th Year"].includes(yearParam) ? { year: yearParam } : {};
+
+    const searchQ = searchParam ? sanitizeString(searchParam) : "";
+    const searchFilter = searchQ
+      ? {
+          $or: [
+            { fullName: { $regex: searchQ, $options: "i" } },
+            { name: { $regex: searchQ, $options: "i" } },
+            { email: { $regex: searchQ, $options: "i" } },
+            { studentId: { $regex: searchQ, $options: "i" } },
+          ],
+        }
+      : {};
 
     // Get all students in department/class
     const students = await User.find({
       role: "student",
       ...departmentQuery,
+      ...yearFilter,
+      ...searchFilter,
     })
-      .select("_id studentId name email year")
+      .select("_id studentId name fullName email year department")
+      .sort({ fullName: 1, name: 1 })
       .lean();
 
     if (students.length === 0) {
       return res.status(200).json({
         data: {
           totalStudents: 0,
-          averageOpportunitiesApplied: 0,
-          averageStagesCleared: 0,
+          averageOpportunitiesApplied: "0.00",
+          averageMaxStageReached: "0.00",
           topPerformers: [],
+          students: [],
+          stageMapping: {
+            1: "Aptitude Test",
+            2: "Group Discussion",
+            3: "Technical Interview",
+            4: "HR Interview",
+            5: "Result",
+          },
         },
         message: "No students found",
       });
@@ -278,7 +310,7 @@ const getClassAnalytics = async (req, res) => {
 
         return {
           studentId: student.studentId,
-          name: student.name,
+          name: student.fullName || student.name,
           opportunitiesApplied: appliedOpps,
           maxStageReached: maxStage,
         };
@@ -290,10 +322,21 @@ const getClassAnalytics = async (req, res) => {
     const avgOppApplied = totalOppApplied / students.length;
     const avgStageReached = studentStats.reduce((sum, s) => sum + s.maxStageReached, 0) / students.length;
 
-    // Get top performers (max stage reached)
-    const topPerformers = studentStats
+    const topPerformers = [...studentStats]
       .sort((a, b) => b.maxStageReached - a.maxStageReached || b.opportunitiesApplied - a.opportunitiesApplied)
-      .slice(0, 5);
+      .slice(0, 5)
+      .sort((a, b) => (a.name || "").localeCompare(b.name || "", "en", { sensitivity: "base" }));
+
+    const studentList = students
+      .map((s) => ({
+        _id: s._id,
+        studentId: s.studentId,
+        name: s.fullName || s.name,
+        email: s.email,
+        year: s.year,
+        department: s.department,
+      }))
+      .sort((a, b) => (a.name || "").localeCompare(b.name || "", "en", { sensitivity: "base" }));
 
     return res.status(200).json({
       data: {
@@ -301,6 +344,7 @@ const getClassAnalytics = async (req, res) => {
         averageOpportunitiesApplied: avgOppApplied.toFixed(2),
         averageMaxStageReached: avgStageReached.toFixed(2),
         topPerformers,
+        students: studentList,
         stageMapping: {
           1: "Aptitude Test",
           2: "Group Discussion",

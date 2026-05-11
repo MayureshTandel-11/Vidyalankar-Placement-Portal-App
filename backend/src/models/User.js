@@ -116,15 +116,12 @@ const userSchema = new mongoose.Schema(
       },
     ],
     resume: {
+      fileName: { type: String, trim: true },
+      filePath: { type: String, trim: true },
+      mimeType: { type: String, trim: true },
       resumeUrl: {
         type: String,
-        validate: {
-          validator: function (v) {
-            if (!v) return true;
-            return v.endsWith(".pdf") || v.includes("pdf");
-          },
-          message: "Resume must be a PDF file",
-        },
+        trim: true,
       },
       uploadedAt: { type: Date },
       _id: false,

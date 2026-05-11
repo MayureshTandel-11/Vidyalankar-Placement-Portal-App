@@ -736,19 +736,48 @@ router.post("/manual-select/:opportunityId/:stage", protect, allowRoles("faculty
       });
     }
 
-    // Update or create manual selection record for this stage
-    let manualSelection = opportunity.stageManualSelections?.find((s) => s.stage === stage);
+    const normalizeIds = (ids) =>
+      [...new Set((ids || []).map((id) => String(id).trim()).filter(Boolean))].sort();
+    const nextList = normalizeIds(selectedStudentIds);
 
+    const existingSelection = opportunity.stageManualSelections?.find((s) => s.stage === stage);
+    const prevSig = existingSelection?.selectedStudentIds?.length
+      ? normalizeIds(existingSelection.selectedStudentIds).join(",")
+      : "";
+    const newSig = nextList.join(",");
+    if (prevSig && prevSig === newSig) {
+      return res.status(409).json({
+        success: false,
+        message: "This selection was already saved",
+      });
+    }
+
+    const prevNotifySet = new Set(
+      (existingSelection?.selectedStudentIds || []).map((x) => String(x).trim())
+    );
+    const studentsToNotify = nextList.filter((id) => !prevNotifySet.has(id));
+
+    const stageOrder = ["Aptitude Test", "Group Discussion", "Technical Interview", "HR Interview"];
+    const currentStageIndex = stageOrder.indexOf(stage);
+    const nextRoundName =
+      currentStageIndex >= 0 && currentStageIndex < stageOrder.length - 1
+        ? stageOrder[currentStageIndex + 1]
+        : "Result";
+    const companyName = opportunity.announcementHeading || "Placement opportunity";
+
+    let manualSelection = existingSelection;
     if (manualSelection) {
-      // Update existing
-      manualSelection.selectedStudentIds = selectedStudentIds;
+      manualSelection.selectedStudentIds = nextList;
       manualSelection.selectedAt = new Date();
       manualSelection.selectedBy = req.user._id;
+      manualSelection.nextRoundName = nextRoundName;
+      manualSelection.companyName = companyName;
     } else {
-      // Create new
       opportunity.stageManualSelections.push({
         stage,
-        selectedStudentIds,
+        selectedStudentIds: nextList,
+        nextRoundName,
+        companyName,
         selectedAt: new Date(),
         selectedBy: req.user._id,
       });
@@ -756,24 +785,63 @@ router.post("/manual-select/:opportunityId/:stage", protect, allowRoles("faculty
 
     await opportunity.save();
 
-    // Emit Socket.IO event
+    const User = require("../models/User");
+    const Notification = require("../models/Notification");
+    const OpportunityTimeline = require("../models/OpportunityTimeline");
+
+    for (const sid of studentsToNotify) {
+      try {
+        const studentUser = await User.findOne({ studentId: sid });
+        if (!studentUser) continue;
+
+        const message = `Congratulations! You have been selected for the next round (${nextRoundName}) for ${companyName}.`;
+        await Notification.create({
+          studentId: studentUser._id,
+          opportunityId: new mongoose.Types.ObjectId(opportunityId),
+          stage: nextRoundName,
+          message,
+          notificationType: "selection",
+        });
+
+        const ioN = getIO();
+        if (ioN) {
+          ioN.to(`student_${studentUser._id}`).emit("notification:new", {
+            message,
+            stage: nextRoundName,
+            opportunityId,
+            notificationType: "selection",
+          });
+        }
+
+        await OpportunityTimeline.create({
+          opportunityId: new mongoose.Types.ObjectId(opportunityId),
+          postedBy: req.user._id,
+          role: req.user.role,
+          stage: nextRoundName,
+          comment: `Congratulations! You have been selected for the next round (${nextRoundName}) at ${companyName}.`,
+          isStageActivation: false,
+        });
+      } catch (inner) {
+        console.error("[MANUAL SELECT NOTIFY]", inner);
+      }
+    }
+
     const io = getIO();
     if (io) {
       io.to(`opportunity_${opportunityId}`).emit("manual:selection:updated", {
         stage,
-        selectedCount: selectedStudentIds.length,
+        selectedCount: nextList.length,
         selectedBy: req.user.name,
         selectedAt: new Date(),
       });
     }
 
-    return res.status(200).json({
-      data: {
-        stage,
-        selectedStudentIds,
-        selectedAt: new Date(),
-      },
-      message: `Successfully selected ${selectedStudentIds.length} students for ${stage}`,
+    return ok(res, {
+      stage,
+      selectedStudentIds: nextList,
+      selectedAt: new Date(),
+      nextRoundName,
+      companyName,
     });
   } catch (error) {
     console.error("[MANUAL SELECT ERROR]", {

@@ -110,6 +110,16 @@ api.interceptors.response.use(
     if (status === 401) {
       console.warn(`[API 401] ${method} ${url}`, data?.message);
 
+      // Credential failures must NOT trigger refresh (avoids infinite retry / stuck login)
+      const skipRefresh =
+        url?.includes("/auth/login") ||
+        url?.includes("/auth/register") ||
+        url?.includes("/auth/verify-otp") ||
+        url?.includes("/auth/forgot-password");
+      if (skipRefresh) {
+        return Promise.reject(error);
+      }
+
       // Don't refresh if already refreshing
       if (isRefreshing) {
         return new Promise((resolve, reject) => {

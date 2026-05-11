@@ -430,7 +430,7 @@ const login = async (req, res) => {
       // Check if student exists
       if (!student) {
         console.warn("[AUTH] ❌ Student not found for identifier:", identifier);
-        return fail(res, 401, "Invalid credentials");
+        return fail(res, 401, "Invalid student ID or email");
       }
 
       // Check if student is verified
@@ -453,7 +453,7 @@ const login = async (req, res) => {
 
       if (!isPasswordValid) {
         console.warn("[AUTH] ❌ Invalid password for student:", student.studentId);
-        return fail(res, 401, "Invalid credentials");
+        return fail(res, 401, "Incorrect password");
       }
 
       // Generate tokens
@@ -507,12 +507,12 @@ const login = async (req, res) => {
 
     if (!user) {
       console.warn("[AUTH] ❌ User not found for email:", email);
-      return fail(res, 401, "Invalid credentials");
+      return fail(res, 401, "Invalid email or account");
     }
 
     if (!["admin", "faculty"].includes(user.role)) {
       console.warn("[AUTH] ❌ Invalid role:", user.role);
-      return fail(res, 401, "Invalid credentials");
+      return fail(res, 401, "Invalid email or account");
     }
 
     // Verify password
@@ -529,7 +529,7 @@ const login = async (req, res) => {
 
     if (!isMatch) {
       console.warn("[AUTH] ❌ Invalid password for user:", email);
-      return fail(res, 401, "Invalid credentials");
+      return fail(res, 401, "Incorrect password");
     }
 
     // Generate tokens
