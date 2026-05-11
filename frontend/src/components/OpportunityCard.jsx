@@ -69,11 +69,66 @@ const OpportunityCard = ({
   const [applicants, setApplicants] = useState([]);
   const [applicantsLoading, setApplicantsLoading] = useState(false);
   const [applicantsError, setApplicantsError] = useState("");
+  const [timelineRefreshKey, setTimelineRefreshKey] = useState(0);
+  const [attendanceRefreshKey, setAttendanceRefreshKey] = useState(0);
+  const [applicantsRefreshKey, setApplicantsRefreshKey] = useState(0);
   const effectiveApplied = localApplied || hasApplied;
+
+  const userRole = user?.role || "student";
+  const userId = user?._id;
+
+  const canEditDelete =
+    userRole === "admin" ||
+    (userRole === "faculty" && String(opportunity.createdBy) === String(userId));
+
+  const isFacultyOwner =
+    userRole === "faculty" && String(opportunity.createdBy) === String(userId);
+
+  const archived = opportunity.status === "archived" || isExpired(opportunity.lastDate);
+  const isDisabled = archived || effectiveApplied;
+  const isStudent = userRole === "student";
+
+  // Define shouldShowApplicants before using it
+  const shouldShowApplicants =
+    (user?.role === "admin") ||
+    (user?.role === "faculty" && String(opportunity.createdBy) === String(user?._id));
+
+  // Function to refresh active stages
+  const refreshActiveStages = useCallback(async () => {
+    if (!opportunity?._id) return;
+    try {
+      const result = await fetchTimeline(opportunity._id);
+      const activeStagesFromFetch = Array.isArray(result?.activeStages) ? result.activeStages : [];
+      console.log('[OpportunityCard] Refreshed activeStages:', activeStagesFromFetch);
+      if (activeStagesFromFetch.length >= 0) {
+        setActiveStages(activeStagesFromFetch);
+        // Increment refresh keys to trigger re-renders in child components
+        setTimelineRefreshKey(prev => prev + 1);
+        setAttendanceRefreshKey(prev => prev + 1);
+      }
+    } catch (err) {
+      console.error('[OpportunityCard] Failed to refresh timeline:', err);
+    }
+  }, [opportunity?._id, fetchTimeline]);
+
+  // Function to refresh applicants
+  const refreshApplicants = useCallback(async () => {
+    if (!opportunity?._id || !shouldShowApplicants) return;
+    setApplicantsLoading(true);
+    setApplicantsError("");
+    try {
+      const data = await getApplicants(opportunity._id);
+      setApplicants(Array.isArray(data) ? data : []);
+      setApplicantsRefreshKey(prev => prev + 1);
+    } catch (err) {
+      setApplicantsError(err.message || "Unable to load applicants. Please try again.");
+    } finally {
+      setApplicantsLoading(false);
+    }
+  }, [opportunity?._id, shouldShowApplicants]);
 
   useEffect(() => {
     if (!isOpen || !opportunity?._id || !socket) return;
-
 
     socket.emit("join:opportunity", { opportunityId: opportunity._id });
 
@@ -84,22 +139,14 @@ const OpportunityCard = ({
     };
   }, [isOpen, opportunity?._id, socket]);
 
-
   useEffect(() => {
     if (!socket) return;
 
     const handleTimelineEntry = ({ activeStages: newActiveStages }) => {
       console.log('[OpportunityCard Socket] timeline:new_entry received with activeStages:', newActiveStages);
       if (opportunity?._id) {
-
         invalidateTimelineCache(opportunity._id);
-        fetchTimeline(opportunity._id).then((result) => {
-          const activeStagesFromFetch = Array.isArray(result?.activeStages) ? result.activeStages : [];
-          console.log('[OpportunityCard Socket] Updated activeStages from refetch:', activeStagesFromFetch);
-          if (activeStagesFromFetch.length > 0) {
-            setActiveStages(activeStagesFromFetch);
-          }
-        });
+        refreshActiveStages();
       }
     };
 
@@ -108,49 +155,17 @@ const OpportunityCard = ({
     return () => {
       socket.off("timeline:new_entry", handleTimelineEntry);
     };
-  }, [socket, opportunity?._id, fetchTimeline, invalidateTimelineCache]);
+  }, [socket, opportunity?._id, refreshActiveStages, invalidateTimelineCache]);
 
   useEffect(() => {
     if (!isOpen || !opportunity?._id) return;
-
-    const fetchActiveStages = async () => {
-      try {
-        const result = await fetchTimeline(opportunity._id);
-        const activeStagesFromFetch = Array.isArray(result?.activeStages) ? result.activeStages : [];
-        console.log('[OpportunityCard] Fetched activeStages from timeline context:', activeStagesFromFetch);
-        if (activeStagesFromFetch.length >= 0) {
-          setActiveStages(activeStagesFromFetch);
-        }
-      } catch (err) {
-        console.error('[OpportunityCard] Failed to fetch timeline:', err);
-      }
-    };
-
-    fetchActiveStages();
-  }, [isOpen, opportunity?._id]);
-
-  const shouldShowApplicants =
-    (user?.role === "admin") ||
-    (user?.role === "faculty" && String(opportunity.createdBy) === String(user?._id));
+    refreshActiveStages();
+  }, [isOpen, opportunity?._id, refreshActiveStages]);
 
   useEffect(() => {
     if (!isOpen || !opportunity?._id || !shouldShowApplicants) return;
-
-    const fetchApplicants = async () => {
-      setApplicantsLoading(true);
-      setApplicantsError("");
-      try {
-        const data = await getApplicants(opportunity._id);
-        setApplicants(Array.isArray(data) ? data : []);
-      } catch (err) {
-        setApplicantsError(err.message || "Unable to load applicants. Please try again.");
-      } finally {
-        setApplicantsLoading(false);
-      }
-    };
-
-    fetchApplicants();
-  }, [isOpen, opportunity?._id, shouldShowApplicants]);
+    refreshApplicants();
+  }, [isOpen, opportunity?._id, shouldShowApplicants, refreshApplicants]);
 
   const handleApply = async () => {
     if (applying || effectiveApplied) return;
@@ -180,19 +195,6 @@ const OpportunityCard = ({
   };
 
   const tabs = getTabs();
-  const userRole = user?.role || "student";
-  const userId = user?._id;
-
-  const canEditDelete =
-    userRole === "admin" ||
-    (userRole === "faculty" && String(opportunity.createdBy) === String(userId));
-
-  const isFacultyOwner =
-    userRole === "faculty" && String(opportunity.createdBy) === String(userId);
-
-  const archived = opportunity.status === "archived" || isExpired(opportunity.lastDate);
-  const isDisabled = archived || effectiveApplied;
-  const isStudent = userRole === "student";
 
   return (
     <>
@@ -531,30 +533,43 @@ const OpportunityCard = ({
 
           {activeTab === "status-timeline" && (
             <OpportunityTimeline
+              key={timelineRefreshKey}
               opportunityId={opportunity._id}
               userRole={userRole}
               activeStages={activeStages}
+              onStageUpdate={refreshActiveStages}
             />
           )}
 
           {/* Attendance Tab */}
           {activeTab === "attendance" && (
             <OpportunityAttendance
+              key={attendanceRefreshKey}
               opportunityId={opportunity._id}
               activeStages={activeStages}
+              onAttendanceUpdate={refreshActiveStages}
             />
           )}
 
           {/* Applicants Tab */}
           {activeTab === "applicants" && (
             <div className="space-y-4">
-              <div>
-                <h3 className="text-base sm:text-lg font-semibold text-slate-800 mb-1">
-                  Applicants ({applicants.length})
-                </h3>
-                <p className="text-xs sm:text-sm text-slate-600">
-                  Total applications for this opportunity
-                </p>
+              <div className="flex justify-between items-center">
+                <div>
+                  <h3 className="text-base sm:text-lg font-semibold text-slate-800 mb-1">
+                    Applicants ({applicants.length})
+                  </h3>
+                  <p className="text-xs sm:text-sm text-slate-600">
+                    Total applications for this opportunity
+                  </p>
+                </div>
+                <button
+                  onClick={refreshApplicants}
+                  className="text-indigo-600 hover:text-indigo-700 text-sm font-medium"
+                  disabled={applicantsLoading}
+                >
+                  {applicantsLoading ? "Refreshing..." : "Refresh"}
+                </button>
               </div>
 
               {applicantsLoading ? (
