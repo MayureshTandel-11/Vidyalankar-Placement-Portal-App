@@ -109,6 +109,11 @@ router.get("/:opportunityId/:stage", protect, allowRoles("faculty", "admin"), as
       },
     }));
 
+    // Sort alphabetically by student name (A-Z)
+    attendanceList.sort((a, b) =>
+      (a.studentId?.name || "Unknown").localeCompare(b.studentId?.name || "Unknown", "en", { sensitivity: "base" })
+    );
+
     return res.status(200).json({
       data: attendanceList || [],
       stageStatus,
@@ -490,6 +495,166 @@ router.get("/download/:opportunityId/:stage", protect, allowRoles("faculty", "ad
     }
 
     return res.status(500).json({ message: error.message || "Failed to download attendance" });
+  }
+});
+
+// POST /api/attendance/select-next-round/:opportunityId/:stage
+// Faculty and Admin only - select students for next round
+// This endpoint:
+// 1. Marks attendance as submitted (if not already)
+// 2. Stores selected students in stages tracking
+// 3. Creates notifications for selected students
+// 4. Updates student timeline
+router.post("/select-next-round/:opportunityId/:stage", protect, allowRoles("faculty", "admin"), async (req, res) => {
+  try {
+    const { opportunityId, stage } = req.params;
+    const { selectedStudentIds = [] } = req.body;
+
+    // Validate stage is not General Update
+    const stageValidation = validateStageNotGeneralUpdate(stage);
+    if (!stageValidation.isValid) {
+      return res.status(stageValidation.error.status).json({
+        success: false,
+        message: stageValidation.error.message
+      });
+    }
+
+    // Validate ObjectId
+    if (!mongoose.Types.ObjectId.isValid(opportunityId)) {
+      return res.status(400).json({ message: "Invalid opportunity ID format" });
+    }
+
+    if (!Array.isArray(selectedStudentIds)) {
+      return res.status(400).json({ message: "selectedStudentIds must be an array" });
+    }
+
+    // Fetch opportunity
+    const opportunity = await Opportunity.findById(opportunityId);
+    if (!opportunity) {
+      return res.status(404).json({ message: "Opportunity not found" });
+    }
+
+    // Map stage name to schema field name
+    const stageMapping = {
+      "Aptitude Test": "aptitude",
+      "Group Discussion": "groupDiscussion",
+      "Technical Interview": "technicalInterview",
+      "HR Interview": "hrInterview",
+    };
+
+    const stageField = stageMapping[stage];
+    if (!stageField) {
+      return res.status(400).json({ message: "Invalid stage for selection" });
+    }
+
+    // Fetch attendance records to get attended students
+    const attendanceRecords = await OpportunityAttendance.find({
+      opportunityId: new mongoose.Types.ObjectId(opportunityId),
+      stage,
+    });
+
+    const attendedStudentIds = attendanceRecords.map(a => a.studentId);
+
+    // Update stages tracking in Opportunity
+    if (!opportunity.stages) {
+      opportunity.stages = {};
+    }
+
+    if (!opportunity.stages[stageField]) {
+      opportunity.stages[stageField] = {
+        attendedStudents: [],
+        selectedStudents: [],
+      };
+    }
+
+    opportunity.stages[stageField].attendedStudents = attendedStudentIds;
+    opportunity.stages[stageField].selectedStudents = selectedStudentIds;
+
+    await opportunity.save();
+
+    // Create notifications for selected students
+    const { createNotification } = require("../controllers/notificationController");
+    const User = require("../models/User");
+    const OpportunityTimeline = require("../models/OpportunityTimeline");
+    const Notification = require("../models/Notification");
+
+    // Determine next stage for notification
+    const stageOrder = ["Aptitude Test", "Group Discussion", "Technical Interview", "HR Interview"];
+    const currentStageIndex = stageOrder.indexOf(stage);
+    const nextStage = currentStageIndex < stageOrder.length - 1 ? stageOrder[currentStageIndex + 1] : "Result";
+
+    for (const studentId of selectedStudentIds) {
+      try {
+        // Find student user
+        const student = await User.findOne({ studentId });
+        if (student) {
+          // Create notification
+          const message = `Congratulations! You have been selected for ${nextStage} round.`;
+          await Notification.create({
+            studentId: student._id,
+            opportunityId: new mongoose.Types.ObjectId(opportunityId),
+            stage: nextStage,
+            message,
+            notificationType: "selection",
+          });
+
+          // Emit Socket.IO event for real-time notification
+          const io = getIO();
+          if (io) {
+            io.to(`student_${student._id}`).emit("notification:new", {
+              message,
+              stage: nextStage,
+              opportunityId,
+              notificationType: "selection",
+            });
+          }
+
+          // Create timeline entry
+          await OpportunityTimeline.create({
+            opportunityId: new mongoose.Types.ObjectId(opportunityId),
+            postedBy: req.user._id,
+            role: req.user.role,
+            stage: nextStage,
+            comment: `Student selected for ${nextStage}`,
+            isStageActivation: false,
+          });
+        }
+      } catch (err) {
+        console.error(`[NOTIFICATION ERROR for student ${studentId}]`, err);
+        // Continue processing other students even if one fails
+      }
+    }
+
+    // Emit Socket.IO event
+    const io = getIO();
+    if (io) {
+      io.to(`opportunity_${opportunityId}`).emit("selection:completed", {
+        stage,
+        selectedCount: selectedStudentIds.length,
+        completedBy: req.user.name,
+        completedAt: new Date(),
+      });
+    }
+
+    return res.status(200).json({
+      data: {
+        stage,
+        attendedStudents: attendedStudentIds,
+        selectedStudents: selectedStudentIds,
+        notificationsCreated: selectedStudentIds.length,
+      },
+      message: `Selected ${selectedStudentIds.length} students for next round`,
+    });
+  } catch (error) {
+    console.error("[SELECT NEXT ROUND ERROR]", {
+      opportunityId: req.params.opportunityId,
+      stage: req.params.stage,
+      error: error.name,
+      message: error.message,
+      stack: error.stack,
+    });
+
+    return res.status(500).json({ message: error.message || "Failed to select students for next round" });
   }
 });
 

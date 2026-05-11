@@ -54,7 +54,7 @@ const getStudentProfile = async (req, res) => {
   }
 };
 
-// 2. Update Academic Info
+// 2. Update Academic Info and Year
 const updateAcademicInfo = async (req, res) => {
   try {
     if (req.user.role !== "student") {
@@ -64,8 +64,8 @@ const updateAcademicInfo = async (req, res) => {
     const { year, sscPercentage, hscPercentage, cgpa, phone } = req.body;
 
     // Validate inputs
-    if (year && (year < 1 || year > 4)) {
-      return fail(res, 400, "Year must be between 1 and 4");
+    if (year && !["1st Year", "2nd Year", "3rd Year", "4th Year"].includes(year)) {
+      return fail(res, 400, "Year must be one of: 1st Year, 2nd Year, 3rd Year, 4th Year");
     }
 
     if (sscPercentage && (sscPercentage < 0 || sscPercentage > 100)) {
@@ -87,12 +87,17 @@ const updateAcademicInfo = async (req, res) => {
     // Prepare update object
     const updateData = {
       academicInfo: {
-        year,
         sscPercentage,
         hscPercentage,
         cgpa,
       },
     };
+
+    // Handle year - update both academicInfo and top-level year field
+    if (year) {
+      updateData.year = year;
+      updateData.academicInfo.year = parseInt(year.charAt(0)); // Convert "1st Year" to 1, etc.
+    }
 
     // Remove undefined values
     Object.keys(updateData.academicInfo).forEach(
@@ -117,6 +122,7 @@ const updateAcademicInfo = async (req, res) => {
     }
 
     return ok(res, {
+      year: student.year,
       academicInfo: student.academicInfo,
       phone: student.phone,
     });
@@ -528,6 +534,51 @@ const updateStudentId = async (req, res) => {
   }
 };
 
+// Download Resume
+// GET /api/student/profile/resume/download/:studentId
+// Faculty can download only from their department
+// Admin can download any student's resume
+const downloadResume = async (req, res) => {
+  try {
+    const { studentId } = req.params;
+
+    // Find student
+    const student = await User.findOne({ studentId }).lean();
+    if (!student) {
+      return fail(res, 404, "Student not found");
+    }
+
+    // Check authorization
+    if (req.user.role === "faculty" && student.department !== req.user.department) {
+      return fail(res, 403, "You can only download resumes for students in your department");
+    }
+
+    // Check if resume exists
+    if (!student.resume || !student.resume.resumeUrl) {
+      return fail(res, 404, "No resume uploaded for this student");
+    }
+
+    const resumePath = student.resume.resumeUrl;
+
+    // For now, return resume URL - in production, this would serve the file
+    // If resumePath is a URL, redirect to it
+    // If it's a local path, serve the file using res.download()
+
+    if (resumePath.startsWith("http")) {
+      // Redirect to URL
+      return res.redirect(resumePath);
+    } else {
+      // Serve local file
+      const path = require("path");
+      const filePath = path.join(__dirname, "../../", resumePath);
+      return res.download(filePath, `${student.name}_resume.pdf`);
+    }
+  } catch (error) {
+    console.error("[DOWNLOAD RESUME ERROR]", error);
+    return fail(res, 500, "Error downloading resume", error.message);
+  }
+};
+
 module.exports = {
   getStudentProfile,
   updateAcademicInfo,
@@ -541,4 +592,5 @@ module.exports = {
   uploadResume,
   updateProfessionalLinks,
   updateStudentId,
+  downloadResume,
 };

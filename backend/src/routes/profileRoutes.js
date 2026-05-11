@@ -12,6 +12,7 @@ const {
   uploadResume,
   updateProfessionalLinks,
   updateStudentId,
+  downloadResume,
 } = require("../controllers/profileController");
 const { protect } = require("../middleware/authMiddleware");
 const { allowRoles } = require("../middleware/roleMiddleware");
@@ -118,6 +119,16 @@ router.post(
   protect,
   allowRoles("student"),
   updateStudentId
+);
+
+// GET /api/student/resume/download/:studentId - Download student resume
+// Faculty can download only from their department
+// Admin can download any student's resume
+router.get(
+  "/resume/download/:studentId",
+  protect,
+  allowRoles("faculty", "admin"),
+  downloadResume
 );
 
 module.exports = router;

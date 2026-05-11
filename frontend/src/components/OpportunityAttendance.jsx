@@ -12,6 +12,7 @@ import {
   Send,
 } from "lucide-react";
 import { Spinner, StatusMessage } from "./ui";
+import SearchableStudentSelect from "./SearchableStudentSelect";
 
 const RECRUITMENT_STAGES = [
   "Aptitude Test",
@@ -36,6 +37,10 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  // New state for next round selection
+  const [selectedStudentIds, setSelectedStudentIds] = useState([]);
+  const [isSelectingNextRound, setIsSelectingNextRound] = useState(false);
+  const [showSelectionConfirm, setShowSelectionConfirm] = useState(false);
 
   // ======================================
   // HELPER: Check if stage is General Update
@@ -262,6 +267,47 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
       console.error("[DOWNLOAD ATTENDANCE ERROR]", err);
     } finally {
       setIsDownloading(false);
+    }
+  };
+
+  // Handle next round student selection
+  const handleSelectNextRound = async () => {
+    if (selectedStudentIds.length === 0) {
+      setError("Please select at least one student");
+      return;
+    }
+
+    setShowSelectionConfirm(false);
+    setIsSelectingNextRound(true);
+    setError("");
+
+    try {
+      const response = await api.post(`/attendance/select-next-round/${opportunityId}/${selectedStage}`, {
+        selectedStudentIds,
+      });
+
+      // Show success message
+      setError(`✓ Successfully selected ${selectedStudentIds.length} students for next round`);
+      setSelectedStudentIds([]);
+
+      // Emit Socket.IO event
+      const io = getSocket();
+      if (io) {
+        io.emit("selection:completed", {
+          opportunityId,
+          stage: selectedStage,
+          count: selectedStudentIds.length,
+        });
+      }
+
+      // Reset after 3 seconds
+      setTimeout(() => setError(""), 3000);
+    } catch (err) {
+      const errorMessage = err.response?.data?.message || "Failed to select students";
+      setError(errorMessage);
+      console.error("[SELECT NEXT ROUND ERROR]", err);
+    } finally {
+      setIsSelectingNextRound(false);
     }
   };
 
@@ -583,9 +629,39 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
         </>
       )}
 
+      {/* Next Round Selection Section */}
+      {selectedStage && !isReadOnly && !isGeneralUpdate && attendanceList.length > 0 && !isStageSubmitted && (
+        <SearchableStudentSelect
+          students={attendanceList}
+          selectedIds={selectedStudentIds}
+          onSelectionChange={setSelectedStudentIds}
+        />
+      )}
+
       {/* Fixed Footer with Action Buttons */}
       {selectedStage && !isReadOnly && !isGeneralUpdate && attendanceList.length > 0 && (
         <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-lg p-4 flex gap-3 justify-end">
+          {/* Select Next Round Button - appears before submit */}
+          {!isStageSubmitted && selectedStudentIds.length > 0 && (
+            <button
+              onClick={() => setShowSelectionConfirm(true)}
+              disabled={isSelectingNextRound}
+              className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isSelectingNextRound ? (
+                <>
+                  <Spinner />
+                  Selecting...
+                </>
+              ) : (
+                <>
+                  <CheckCircle size={16} />
+                  Select {selectedStudentIds.length} for Next Round
+                </>
+              )}
+            </button>
+          )}
+
           <button
             onClick={handleDownloadAttendance}
             disabled={isDownloading || !isStageSubmitted}
@@ -621,6 +697,49 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
               </>
             )}
           </button>
+        </div>
+      )}
+
+      {/* Selection Confirmation Modal */}
+      {showSelectionConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-sm w-full">
+            <div className="p-6">
+              <h3 className="text-lg font-semibold text-slate-900 mb-2">
+                Confirm Student Selection
+              </h3>
+              <p className="text-sm text-slate-600 mb-4">
+                You are about to select <strong>{selectedStudentIds.length} student(s)</strong> for the next round. They will receive notifications.
+              </p>
+              <div className="rounded-lg bg-slate-50 p-3 mb-4 text-xs text-slate-700">
+                <p>
+                  <strong>Next Round:</strong> This will move to the next stage in the recruitment process.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3 p-4 border-t border-slate-200 justify-end">
+              <button
+                onClick={() => setShowSelectionConfirm(false)}
+                className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSelectNextRound}
+                disabled={isSelectingNextRound}
+                className="px-4 py-2 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {isSelectingNextRound ? (
+                  <>
+                    <Spinner />
+                    Selecting...
+                  </>
+                ) : (
+                  "Confirm Selection"
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

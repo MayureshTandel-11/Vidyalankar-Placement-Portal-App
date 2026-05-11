@@ -13,6 +13,12 @@ import AdminOpportunitiesPage from "./pages/AdminOpportunitiesPage";
 import StudentDeletionRequestPage from "./pages/StudentDeletionRequestPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import { useAuth } from "./context/AuthContext";
+import Layout from "./components/Layout";
+import Footer from "./components/Footer";
+import StudentManagement from "./components/StudentManagement";
+import StudentAnalytics from "./components/StudentAnalytics";
+import Notifications from "./components/Notifications";
+import { useState } from "react";
 
 const ProtectedRoute = ({ children, allowRoles }) => {
   const { user } = useAuth();
@@ -33,6 +39,9 @@ const PublicOnly = ({ children }) => {
 };
 
 const App = () => {
+  const { user } = useAuth();
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
+
   return (
     <OpportunitiesProvider>
       <Routes>
@@ -45,6 +54,9 @@ const App = () => {
       <Route path="/post-opportunity" element={<ProtectedRoute allowRoles={["faculty"]}><FacultyOpportunitiesPage /></ProtectedRoute>} />
       <Route path="/my-posts" element={<ProtectedRoute allowRoles={["faculty"]}><FacultyOpportunitiesPage /></ProtectedRoute>} />
       <Route path="/manage-faculty" element={<ProtectedRoute allowRoles={["admin"]}><ManageFacultyPage /></ProtectedRoute>} />
+      <Route path="/students" element={<ProtectedRoute allowRoles={["faculty", "admin"]}><Layout role={user?.role?.charAt(0).toUpperCase() + user?.role?.slice(1)}><StudentManagement /></Layout></ProtectedRoute>} />
+      <Route path="/analytics" element={<ProtectedRoute allowRoles={["faculty", "admin"]}><Layout role={user?.role?.charAt(0).toUpperCase() + user?.role?.slice(1)}><div className="space-y-6"><h1 className="text-3xl font-bold">Class Analytics</h1><StudentAnalytics studentId={null} /></div></Layout></ProtectedRoute>} />
+      <Route path="/notifications" element={<ProtectedRoute allowRoles={["student"]}><Layout role="Student"><Notifications onUnreadCountChange={setUnreadNotifications} /></Layout></ProtectedRoute>} />
       <Route path="/request-deletion" element={<ProtectedRoute allowRoles={["student"]}><StudentDeletionRequestPage /></ProtectedRoute>} />
       <Route path="/student/profile" element={<ProtectedRoute allowRoles={["student"]}><StudentProfilePage /></ProtectedRoute>} />
       <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />

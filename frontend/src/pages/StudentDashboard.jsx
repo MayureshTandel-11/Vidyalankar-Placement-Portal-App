@@ -16,6 +16,7 @@ const StudentDashboard = ({ role = "Student" }) => {
   const [archive, setArchive] = useState([]);
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState("asc");
+  const [filter, setFilter] = useState("all"); // all, applied
   const [loading, setLoading] = useState(true);
   const [message] = useState("");
   const [error, setError] = useState("");
@@ -41,13 +42,17 @@ const StudentDashboard = ({ role = "Student" }) => {
   const activeView = useMemo(
     () =>
       [...active]
-        .filter((item) => item.announcementHeading.toLowerCase().includes(search.toLowerCase()))
+        .filter((item) => {
+          const matchesSearch = item.announcementHeading.toLowerCase().includes(search.toLowerCase());
+          const matchesFilter = filter === "all" || (filter === "applied" && item.hasApplied);
+          return matchesSearch && matchesFilter;
+        })
         .sort((a, b) =>
           sort === "asc"
             ? new Date(a.lastDate).getTime() - new Date(b.lastDate).getTime()
             : new Date(b.lastDate).getTime() - new Date(a.lastDate).getTime()
         ),
-    [active, search, sort]
+    [active, search, sort, filter]
   );
 
   const handleApply = useCallback(async (id) => {
@@ -80,7 +85,7 @@ const StudentDashboard = ({ role = "Student" }) => {
       <Layout role={role}>
         <section className="space-y-4 sm:space-y-6">
           <SectionTitle title={`${role} Dashboard`} subtitle="Explore active opportunities and track archived postings." />
-          <div className="grid gap-3 sm:gap-4 grid-cols-1 xs:grid-cols-2 xl:grid-cols-2">
+          <div className="grid gap-3 sm:gap-4 grid-cols-1 xs:grid-cols-2 xl:grid-cols-3">
             <input
               className="input-modern text-xs sm:text-base"
               placeholder="Search by heading"
@@ -94,6 +99,14 @@ const StudentDashboard = ({ role = "Student" }) => {
             >
               <option value="asc">Sort by Deadline: Earliest</option>
               <option value="desc">Sort by Deadline: Latest</option>
+            </select>
+            <select
+              className="input-modern text-xs sm:text-base"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+            >
+              <option value="all">All Opportunities</option>
+              <option value="applied">Applied Opportunities</option>
             </select>
           </div>
           <StatusMessage message={message} />

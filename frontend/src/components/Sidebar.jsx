@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { BriefcaseBusiness, ChevronLeft, ChevronRight, FileText, LayoutDashboard, ListChecks, ShieldCheck, Trash2, UserRound, Users } from "lucide-react";
+import { BriefcaseBusiness, ChevronLeft, ChevronRight, FileText, LayoutDashboard, ListChecks, ShieldCheck, Trash2, UserRound, Users, BarChart3 } from "lucide-react";
 import { motion as Motion } from "framer-motion";
 
 const roleItems = {
@@ -7,18 +7,23 @@ const roleItems = {
     { label: "Dashboard", to: "/dashboard", icon: LayoutDashboard },
     { label: "My Profile", to: "/student/profile", icon: FileText },
     { label: "Opportunities", to: "/opportunities", icon: BriefcaseBusiness },
+    { label: "Notifications", to: "/notifications", icon: Users },
     { label: "Profile", to: "/profile", icon: UserRound },
   ],
   Faculty: [
     { label: "Dashboard", to: "/dashboard", icon: LayoutDashboard },
     { label: "Post Opportunities", to: "/post-opportunity", icon: BriefcaseBusiness },
     { label: "My Posts", to: "/my-posts", icon: ListChecks },
+    { label: "Students", to: "/students", icon: Users },
+    { label: "Analytics", to: "/analytics", icon: BarChart3 },
     { label: "Profile", to: "/profile", icon: UserRound },
   ],
   Admin: [
     { label: "Dashboard", to: "/dashboard", icon: LayoutDashboard },
     { label: "Opportunities", to: "/opportunities", icon: BriefcaseBusiness },
     { label: "Create Faculty", to: "/manage-faculty", icon: Users },
+    { label: "Students", to: "/students", icon: Users },
+    { label: "Analytics", to: "/analytics", icon: BarChart3 },
     { label: "Profile", to: "/profile", icon: ShieldCheck },
   ],
 };

@@ -4,6 +4,8 @@ const { DEPARTMENTS } = require("../constants/departments");
 const userSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true },
+    // Full name for sorting purposes (populated from name or explicit field)
+    fullName: { type: String, trim: true },
     email: { type: String, lowercase: true, trim: true },
     userEmail: { type: String, lowercase: true, trim: true },
     studentId: { type: String, trim: true },
@@ -39,6 +41,14 @@ const userSchema = new mongoose.Schema(
           return /^\d{10}$/.test(v);
         },
         message: "Phone number must be exactly 10 digits",
+      },
+    },
+    // Year field for students (1st, 2nd, 3rd, 4th year)
+    year: {
+      type: String,
+      enum: ["1st Year", "2nd Year", "3rd Year", "4th Year"],
+      required: function () {
+        return this.role === "student";
       },
     },
     academicInfo: {
@@ -163,6 +173,10 @@ userSchema.pre("validate", function validateIdentity() {
   if (!this.userEmail) {
     this.userEmail = this.email || this.studentId;
   }
+  // Populate fullName from name if not explicitly set
+  if (!this.fullName) {
+    this.fullName = this.name;
+  }
   if (this.role === "student" && !this.studentId) {
     throw new Error("studentId is required for students");
   }
@@ -173,5 +187,9 @@ userSchema.pre("validate", function validateIdentity() {
 
 userSchema.index({ email: 1 }, { unique: true, sparse: true });
 userSchema.index({ studentId: 1 }, { unique: true, sparse: true });
+// Indexes for efficient sorting and filtering
+userSchema.index({ fullName: 1 });
+userSchema.index({ department: 1, year: 1 });
+userSchema.index({ department: 1, role: 1 });
 
 module.exports = mongoose.model("User", userSchema);

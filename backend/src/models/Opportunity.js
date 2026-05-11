@@ -82,6 +82,29 @@ const opportunitySchema = new mongoose.Schema(
         default: 0,
       },
     }],
+    // Stage tracking: attended and selected students per stage
+    stages: {
+      aptitude: {
+        attendedStudents: [{ type: String }], // studentId strings
+        selectedStudents: [{ type: String }], // studentId strings
+        _id: false,
+      },
+      groupDiscussion: {
+        attendedStudents: [{ type: String }],
+        selectedStudents: [{ type: String }],
+        _id: false,
+      },
+      technicalInterview: {
+        attendedStudents: [{ type: String }],
+        selectedStudents: [{ type: String }],
+        _id: false,
+      },
+      hrInterview: {
+        attendedStudents: [{ type: String }],
+        selectedStudents: [{ type: String }],
+        _id: false,
+      },
+    },
   },
   { timestamps: true }
 );

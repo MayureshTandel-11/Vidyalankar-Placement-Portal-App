@@ -16,6 +16,7 @@ const profileRoutes = require("./routes/profileRoutes");
 const metadataRoutes = require("./routes/metadataRoutes");
 const timelineRoutes = require("./routes/timeline");
 const attendanceRoutes = require("./routes/attendance");
+const notificationRoutes = require("./routes/notificationRoutes");
 const { sanitizeRequest } = require("./middleware/sanitizeMiddleware");
 const { seedAdminUser, DEFAULT_ADMIN } = require("./utils/seedAdmin");
 const { setIO } = require("./utils/io");
@@ -126,6 +127,7 @@ app.use("/api/student", profileRoutes);
 app.use("/api/metadata", metadataRoutes);
 app.use("/api/timeline", timelineRoutes);
 app.use("/api/attendance", attendanceRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 // SECURITY: 404 handler (before error handler)
 app.use(notFoundHandler);
