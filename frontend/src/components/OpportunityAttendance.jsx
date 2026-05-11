@@ -1,7 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
 import api from "../api";
-import { useOpportunities } from "../context/OpportunitiesContext";
-import { useAuth } from "../context/AuthContext";
 import { getSocket } from "../utils/socket";
 import {
   AlertCircle,
@@ -10,6 +8,7 @@ import {
   Clock,
   Download,
   Send,
+  Users,
 } from "lucide-react";
 import { Spinner, StatusMessage } from "./ui";
 import SearchableStudentSelect from "./SearchableStudentSelect";
@@ -23,8 +22,6 @@ const RECRUITMENT_STAGES = [
 ];
 
 const OpportunityAttendance = ({ opportunityId, activeStages }) => {
-  const { fetchAttendance: fetchAttendanceFromContext } = useOpportunities();
-  const { user } = useAuth();
   const [selectedStage, setSelectedStage] = useState(null);
   const [attendanceList, setAttendanceList] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -42,18 +39,16 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
   const [isSelectingNextRound, setIsSelectingNextRound] = useState(false);
   const [showSelectionConfirm, setShowSelectionConfirm] = useState(false);
 
+  // Manual Selection Mode states
+  const [viewMode, setViewMode] = useState("attendance"); // "attendance" or "manual-select"
+  const [manualSelectedIds, setManualSelectedIds] = useState([]);
+  const [isSavingManual, setIsSavingManual] = useState(false);
+  const [manualSelectionsLoaded, setManualSelectionsLoaded] = useState(false);
+
   // ======================================
   // HELPER: Check if stage is General Update
   // ======================================
   const isGeneralUpdate = selectedStage?.toLowerCase() === "general update";
-
-  // ======================================
-  // HELPER: Check if user can download attendance
-  // ======================================
-  const canDownloadAttendance =
-    !isGeneralUpdate &&
-    stageStatus?.isSubmitted === true &&
-    ["admin", "faculty"].includes(user?.role);
 
   // Determine the current stage (most recently activated)
   const getCurrentStage = () => {
@@ -76,6 +71,23 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
   const isReadOnly = selectedStage && currentStage && selectedStage !== currentStage;
   const isStageSubmitted = stageStatus?.isSubmitted || false;
   const canEditAttendance = !isReadOnly && !isStageSubmitted;
+
+  // ======================================
+  // Load manual selections for a stage
+  // ======================================
+  const fetchManualSelections = useCallback(async (stage) => {
+    try {
+      const response = await api.get(
+        `/attendance/manual-selections/${opportunityId}/${stage}`
+      );
+      const selections = response.data?.data?.selectedStudentIds || [];
+      setManualSelectedIds(selections);
+      setManualSelectionsLoaded(true);
+    } catch (err) {
+      console.error("[FETCH MANUAL SELECTIONS ERROR]", err);
+      setManualSelectionsLoaded(true);
+    }
+  }, [opportunityId]);
 
   // Fetch attendance data including stage status
   useEffect(() => {
@@ -105,11 +117,19 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
     const fetchAttendanceData = async () => {
       try {
         setIsLoading(true);
+        setError("");
         // Call API directly to get stage status
         const response = await api.get(`/attendance/${opportunityId}/${selectedStage}`);
-        setAttendanceList(response.data?.data || []);
-        setStageStatus(response.data?.stageStatus || {});
-        setError("");
+        const newAttendanceList = response.data?.data || [];
+        const newStageStatus = response.data?.stageStatus || {};
+
+        setAttendanceList(newAttendanceList);
+        setStageStatus(newStageStatus);
+
+        // Load manual selections if stage is submitted
+        if (newStageStatus?.isSubmitted) {
+          fetchManualSelections(selectedStage);
+        }
       } catch (err) {
         if (err.name === "AbortError") return;
         setError(err.response?.data?.message || "Failed to fetch attendance");
@@ -141,19 +161,34 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
     }
   }, [activeStages]);
 
+  // Refetch attendance data when a new stage is enabled
+  useEffect(() => {
+    if (selectedStage && activeStages && activeStages.includes(selectedStage)) {
+      // Stage exists in activeStages, data should load properly
+      console.log('[OpportunityAttendance] Stage is now active:', selectedStage);
+    }
+  }, [activeStages, selectedStage]);
+
   // Socket event listeners
   useEffect(() => {
     if (!socket) return;
 
     const handleAttendanceUpdate = ({ studentId, stage, status, markedBy, markedAt }) => {
       if (stage === selectedStage) {
+        // Update local attendance list
         setAttendanceList((prev) =>
           prev.map((item) =>
-            String(item.studentId.studentId) === String(studentId)
-              ? { ...item, status, markedBy: { name: markedBy }, markedAt }
+            String(item.studentId.studentId) === String(studentId) || String(item.studentId._id) === String(studentId)
+              ? {
+                  ...item,
+                  status,
+                  markedBy: markedBy ? { name: markedBy } : item.markedBy,
+                  markedAt: markedAt || item.markedAt,
+                }
               : item
           )
         );
+        // Clear optimistic update for this student
         setOptimisticUpdates((prev) => ({
           ...prev,
           [`${studentId}:${stage}`]: null,
@@ -172,17 +207,102 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
           presentCount,
           absentCount,
         });
+        // Load manual selections for this stage
+        setTimeout(() => fetchManualSelections(stage), 500);
+      }
+    };
+
+    const handleManualSelectionUpdate = ({ stage, selectedCount, selectedBy }) => {
+      if (stage === selectedStage) {
+        // Reload manual selections when updated
+        fetchManualSelections(stage);
       }
     };
 
     socket.on("attendance:update", handleAttendanceUpdate);
     socket.on("attendance:submitted", handleAttendanceSubmitted);
+    socket.on("manual:selection:updated", handleManualSelectionUpdate);
 
     return () => {
       socket.off("attendance:update", handleAttendanceUpdate);
       socket.off("attendance:submitted", handleAttendanceSubmitted);
+      socket.off("manual:selection:updated", handleManualSelectionUpdate);
     };
   }, [selectedStage, socket]);
+
+  // Save manual selections
+  const handleSaveManualSelections = async () => {
+    // Validate selections exist
+    if (!manualSelectedIds || manualSelectedIds.length === 0) {
+      setError("Please select at least one student");
+      return;
+    }
+
+    // Validate stage is selected
+    if (!selectedStage || selectedStage === "null") {
+      setError("Invalid stage selected");
+      return;
+    }
+
+    setIsSavingManual(true);
+    setError("");
+
+    try {
+      if (process.env.NODE_ENV === "development") {
+        console.log("[OPPORTUNITY ATTENDANCE] Saving manual selections:", {
+          opportunityId,
+          stage: selectedStage,
+          selectedCount: manualSelectedIds.length
+        });
+      }
+
+      const response = await api.post(
+        `/attendance/manual-select/${opportunityId}/${selectedStage}`,
+        { selectedStudentIds: manualSelectedIds }
+      );
+
+      // Defensive: validate response
+      if (!response?.data) {
+        throw new Error("Empty response from server");
+      }
+
+      if (process.env.NODE_ENV === "development") {
+        console.log("[OPPORTUNITY ATTENDANCE ✓] Manual selections saved successfully");
+      }
+
+      // Show success message
+      const successMsg = `✓ Successfully saved ${manualSelectedIds.length} selected student(s) for next round`;
+      console.log(successMsg);
+      setError(""); // Clear any previous errors
+
+      // Emit socket event for real-time updates
+      const socket = getSocket();
+      if (socket) {
+        socket.emit("manual:selection:saved", {
+          opportunityId,
+          stage: selectedStage,
+          selectedCount: manualSelectedIds.length,
+        });
+      }
+    } catch (err) {
+      const errorMessage =
+        err.response?.data?.message ||
+        err.message ||
+        "Failed to save manual selections. Please try again.";
+
+      setError(errorMessage);
+      console.error("[OPPORTUNITY ATTENDANCE] Manual selection save error:", {
+        opportunityId,
+        stage: selectedStage,
+        selectedCount: manualSelectedIds.length,
+        errorMessage,
+        status: err.response?.status,
+        url: err.config?.url
+      });
+    } finally {
+      setIsSavingManual(false);
+    }
+  };
 
   // Handle marking attendance
   const handleMarkAttendance = useCallback(
@@ -193,6 +313,16 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
       }
 
       const key = `${studentId}:${selectedStage}`;
+
+      // Immediately update local state (optimistic update)
+      setAttendanceList((prev) =>
+        prev.map((item) =>
+          String(item.studentId.studentId) === String(studentId)
+            ? { ...item, status }
+            : item
+        )
+      );
+
       setOptimisticUpdates((prev) => ({ ...prev, [key]: status }));
       setError("");
 
@@ -202,8 +332,20 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
           stage: selectedStage,
           status,
         });
-      } catch (err) {
+
+        // Success - keep the update
         setOptimisticUpdates((prev) => ({ ...prev, [key]: null }));
+      } catch (err) {
+        // Revert on error
+        setAttendanceList((prev) =>
+          prev.map((item) =>
+            String(item.studentId.studentId) === String(studentId)
+              ? { ...item, status: item.status } // Keep original
+              : item
+          )
+        );
+        setOptimisticUpdates((prev) => ({ ...prev, [key]: null }));
+
         const errorMessage = err.response?.data?.message || err.message || "Failed to mark attendance";
         setError(errorMessage);
         console.error("[MARK ATTENDANCE ERROR]", err);
@@ -220,9 +362,18 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
 
     try {
       const response = await api.post(`/attendance/submit/${opportunityId}/${selectedStage}`);
-      setStageStatus(response.data?.data);
-      // Clear optimistic updates
+      const newStageStatus = response.data?.data;
+
+      setStageStatus(newStageStatus);
       setOptimisticUpdates({});
+
+      // Success message
+      console.log(`[ATTENDANCE] Successfully submitted ${selectedStage}`);
+
+      // Load manual selections after submission
+      setTimeout(() => {
+        fetchManualSelections(selectedStage);
+      }, 500);
     } catch (err) {
       const errorMessage = err.response?.data?.message || err.message || "Failed to submit attendance";
       setError(errorMessage);
@@ -329,7 +480,40 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
       )}
 
       <div className="rounded-lg border border-slate-200 bg-white p-4">
-        <h3 className="text-sm font-semibold text-slate-800 mb-3">Select Stage</h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-slate-800">Select Stage</h3>
+          {/* View Mode Toggle - Only show after attendance submission */}
+          {isStageSubmitted && !isGeneralUpdate && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => setViewMode("attendance")}
+                className={`px-3 py-1 text-xs font-medium rounded transition ${
+                  viewMode === "attendance"
+                    ? "bg-indigo-600 text-white"
+                    : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                }`}
+              >
+                Attendance
+              </button>
+              <button
+                onClick={() => {
+                  setViewMode("manual-select");
+                  if (!manualSelectionsLoaded) {
+                    fetchManualSelections(selectedStage);
+                  }
+                }}
+                className={`px-3 py-1 text-xs font-medium rounded transition flex items-center gap-1 ${
+                  viewMode === "manual-select"
+                    ? "bg-purple-600 text-white"
+                    : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                }`}
+              >
+                <Users size={14} />
+                Manual Selection
+              </button>
+            </div>
+          )}
+        </div>
         {/* Stage selector with padding to accommodate badges */}
         <div className="flex gap-2 overflow-x-auto pb-2 pt-3 px-1 -mx-1">
           {/* Recruitment stages */}
@@ -638,9 +822,98 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
         />
       )}
 
+      {/* Manual Selection Section - Only show after attendance submission */}
+      {selectedStage &&
+        isStageSubmitted &&
+        !isGeneralUpdate &&
+        viewMode === "manual-select" && (
+          <div className="space-y-4">
+            <div className="rounded-lg border border-purple-200 bg-purple-50 p-4 flex items-start gap-3">
+              <Users size={18} className="mt-0.5 text-purple-600 flex-shrink-0" />
+              <div>
+                <p className="text-sm text-purple-800">
+                  <strong>Manual Selection Mode</strong>
+                </p>
+                <p className="text-xs text-purple-700 mt-1">
+                  Select students who have cleared this stage. Only students marked as present are selectable.
+                </p>
+              </div>
+            </div>
+
+            {/* Filter to show only present students for manual selection */}
+            <SearchableStudentSelect
+              students={attendanceList.filter((a) => a.status === "present")}
+              selectedIds={manualSelectedIds}
+              onSelectionChange={setManualSelectedIds}
+              placeholder="Search present students..."
+            />
+
+            {/* Summary of selected students */}
+            {manualSelectedIds.length > 0 && (
+              <div className="rounded-lg border border-purple-200 bg-white p-4">
+                <p className="text-sm font-semibold text-slate-900 mb-3">
+                  Selected Students ({manualSelectedIds.length})
+                </p>
+                <div className="space-y-2">
+                  {attendanceList
+                    .filter((a) => manualSelectedIds.includes(a.studentId.studentId))
+                    .map((record) => (
+                      <div
+                        key={record._id}
+                        className="flex items-center justify-between p-2 bg-slate-50 rounded border border-slate-200"
+                      >
+                        <div>
+                          <p className="text-sm font-medium text-slate-900">
+                            {record.studentId.name}
+                          </p>
+                          <p className="text-xs text-slate-600">
+                            {record.studentId.studentId}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() =>
+                            setManualSelectedIds(
+                              manualSelectedIds.filter(
+                                (id) => id !== record.studentId.studentId
+                              )
+                            )
+                          }
+                          className="text-xs px-2 py-1 text-red-600 hover:bg-red-50 rounded transition"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
       {/* Fixed Footer with Action Buttons */}
       {selectedStage && !isReadOnly && !isGeneralUpdate && attendanceList.length > 0 && (
         <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-lg p-4 flex gap-3 justify-end">
+          {/* Manual Selection Save Button */}
+          {isStageSubmitted && viewMode === "manual-select" && (
+            <button
+              onClick={handleSaveManualSelections}
+              disabled={isSavingManual || manualSelectedIds.length === 0}
+              className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isSavingManual ? (
+                <>
+                  <Spinner />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Users size={16} />
+                  Save Selections ({manualSelectedIds.length})
+                </>
+              )}
+            </button>
+          )}
+
           {/* Select Next Round Button - appears before submit */}
           {!isStageSubmitted && selectedStudentIds.length > 0 && (
             <button

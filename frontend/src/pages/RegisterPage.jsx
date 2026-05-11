@@ -16,6 +16,7 @@ const RegisterPage = () => {
     name: "",
     studentId: "",
     department: "",
+    year: "",
     email: "",
     phone: "",
     password: "",
@@ -31,8 +32,8 @@ const RegisterPage = () => {
   const register = async () => {
     setError("");
     setMsg("");
-    if (!form.name.trim() || !form.studentId.trim() || !form.department.trim() || !form.email.trim() || !form.phone.trim() || !form.password.trim()) {
-      setError("Name, student ID, email, department, phone and password are required.");
+    if (!form.name.trim() || !form.studentId.trim() || !form.department.trim() || !form.year.trim() || !form.email.trim() || !form.phone.trim() || !form.password.trim()) {
+      setError("Name, student ID, email, department, year, phone and password are required.");
       return;
     }
     if (!instituteEmailRegex.test(form.email.trim())) {
@@ -74,8 +75,10 @@ const RegisterPage = () => {
     try {
       const response = await api.post("/auth/verify-otp", { studentId: form.studentId, otp: form.otp });
       const data = extractApiData(response);
-      login(data.token, data.user);
-      navigate("/");
+      setMsg("✅ Email verified successfully! Redirecting to login...");
+      setTimeout(() => {
+        navigate("/login");
+      }, 1500);
     } catch (err) {
       setError(extractApiError(err, "OTP verification failed"));
     } finally {
@@ -127,6 +130,15 @@ const RegisterPage = () => {
                     {department}
                   </option>
                 ))}
+              </select>
+            </div>
+            <div className="space-y-1.5 xs:space-y-2">
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-600">Year</p>
+              <select className="input-modern text-xs xs:text-base" onChange={(e) => setForm({ ...form, year: e.target.value })} defaultValue="">
+                <option value="" disabled>Select Year</option>
+                <option value="1st Year">1st Year</option>
+                <option value="2nd Year">2nd Year</option>
+                <option value="3rd Year">3rd Year</option>
               </select>
             </div>
             <div className="space-y-1.5 xs:space-y-2">

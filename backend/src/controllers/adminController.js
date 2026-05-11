@@ -86,7 +86,7 @@ const updateDeletionRequestStatus = async (req, res) => {
   if (!["pending", "approved", "rejected"].includes(status)) {
     return fail(res, 400, "Invalid status");
   }
-  const request = await DeletionRequest.findByIdAndUpdate(req.params.id, { status }, { new: true });
+  const request = await DeletionRequest.findByIdAndUpdate(req.params.id, { status }, { returnDocument: "after" });
   if (!request) return fail(res, 404, "Request not found");
   if (status === "approved") await User.deleteOne({ studentId: request.studentId });
   return ok(res, request);

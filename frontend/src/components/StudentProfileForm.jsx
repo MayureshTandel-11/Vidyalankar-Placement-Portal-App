@@ -14,6 +14,7 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
 
   const [formData, setFormData] = useState({
     studentId: "",
+    year: "",
     academiInfo: {
       year: "",
       sscPercentage: "",
@@ -61,6 +62,7 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
           setFormData((prev) => ({
             ...prev,
             studentId: profile.studentId || "",
+            year: profile.year || "",
             academiInfo: {
               year: profile.academicInfo?.year || "",
               sscPercentage: profile.academicInfo?.sscPercentage || "",
@@ -154,9 +156,9 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
   // Validation functions
   const validateAcademicInfo = () => {
     const errors = {};
-    if (!formData.academiInfo.year) errors.year = "Year is required";
+    if (!formData.year) errors.year = "Class year is required";
     if (formData.academiInfo.year && (formData.academiInfo.year < 1 || formData.academiInfo.year > 4)) {
-      errors.year = "Year must be between 1 and 4";
+      errors.year = "Academic year must be between 1 and 4";
     }
     if (formData.academiInfo.sscPercentage && (formData.academiInfo.sscPercentage < 0 || formData.academiInfo.sscPercentage > 100)) {
       errors.sscPercentage = "SSC percentage must be between 0 and 100";
@@ -231,6 +233,7 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
     try {
       await api.post("/student/academic-info", {
         ...formData.academiInfo,
+        year: formData.year,
         phone: formData.phone,
       });
       setSuccessMsg("Academic information saved successfully");
@@ -567,23 +570,23 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-700">
-                  Year <span className="text-red-500">*</span>
+                  Class Year <span className="text-red-500">*</span>
                 </label>
                 <select
-                  value={formData.academiInfo.year}
+                  value={formData.year}
                   onChange={(e) =>
                     setFormData((prev) => ({
                       ...prev,
-                      academiInfo: { ...prev.academiInfo, year: parseInt(e.target.value) || "" },
+                      year: e.target.value,
                     }))
                   }
                   className="input-modern w-full rounded-lg border border-slate-300 bg-white px-4 py-2"
                 >
                   <option value="">Select Year</option>
-                  <option value={1}>1st Year</option>
-                  <option value={2}>2nd Year</option>
-                  <option value={3}>3rd Year</option>
-                  <option value={4}>4th Year</option>
+                  <option value="1st Year">1st Year</option>
+                  <option value="2nd Year">2nd Year</option>
+                  <option value="3rd Year">3rd Year</option>
+                  <option value="4th Year">4th Year</option>
                 </select>
                 {validationErrors.year && <p className="text-sm text-red-600">{validationErrors.year}</p>}
               </div>

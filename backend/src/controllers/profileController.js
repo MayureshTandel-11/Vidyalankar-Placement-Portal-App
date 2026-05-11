@@ -114,7 +114,7 @@ const updateAcademicInfo = async (req, res) => {
     const student = await User.findByIdAndUpdate(
       req.user._id,
       updateData,
-      { new: true, runValidators: true }
+      { returnDocument: "after", runValidators: true }
     );
 
     if (!student) {
@@ -149,7 +149,7 @@ const updateTechnicalSkills = async (req, res) => {
     const student = await User.findByIdAndUpdate(
       req.user._id,
       { technicalSkills: sanitizedSkills },
-      { new: true, runValidators: true }
+      { returnDocument: "after", runValidators: true }
     );
 
     if (!student) {
@@ -184,7 +184,7 @@ const addCertification = async (req, res) => {
     const student = await User.findByIdAndUpdate(
       req.user._id,
       { $push: { certifications: certification } },
-      { new: true, runValidators: true }
+      { returnDocument: "after", runValidators: true }
     );
 
     if (!student) {
@@ -258,7 +258,7 @@ const deleteCertification = async (req, res) => {
     const student = await User.findByIdAndUpdate(
       req.user._id,
       { $pull: { certifications: { _id: certificationId } } },
-      { new: true }
+      { returnDocument: "after" }
     );
 
     if (!student) {
@@ -300,7 +300,7 @@ const addProject = async (req, res) => {
     const student = await User.findByIdAndUpdate(
       req.user._id,
       { $push: { projects: project } },
-      { new: true, runValidators: true }
+      { returnDocument: "after", runValidators: true }
     );
 
     if (!student) {
@@ -381,7 +381,7 @@ const deleteProject = async (req, res) => {
     const student = await User.findByIdAndUpdate(
       req.user._id,
       { $pull: { projects: { _id: projectId } } },
-      { new: true }
+      { returnDocument: "after" }
     );
 
     if (!student) {
@@ -429,7 +429,7 @@ const uploadResume = async (req, res) => {
           uploadedAt: new Date(),
         },
       },
-      { new: true, runValidators: true }
+      { returnDocument: "after", runValidators: true }
     );
 
     if (!student) {
@@ -484,7 +484,7 @@ const updateProfessionalLinks = async (req, res) => {
     const student = await User.findByIdAndUpdate(
       req.user._id,
       updateData,
-      { new: true, runValidators: true }
+      { returnDocument: "after", runValidators: true }
     );
 
     if (!student) {
@@ -521,7 +521,7 @@ const updateStudentId = async (req, res) => {
     const student = await User.findByIdAndUpdate(
       req.user._id,
       { studentId: sanitizedStudentId },
-      { new: true, runValidators: true }
+      { returnDocument: "after", runValidators: true }
     );
 
     if (!student) {
@@ -542,6 +542,11 @@ const downloadResume = async (req, res) => {
   try {
     const { studentId } = req.params;
 
+    // Validate input
+    if (!studentId || studentId === "null") {
+      return fail(res, 400, "Invalid student ID");
+    }
+
     // Find student
     const student = await User.findOne({ studentId }).lean();
     if (!student) {
@@ -560,18 +565,46 @@ const downloadResume = async (req, res) => {
 
     const resumePath = student.resume.resumeUrl;
 
+    console.log(`[RESUME DOWNLOAD] Student: ${student.name} (${studentId}), Path: ${resumePath}, By: ${req.user.email}`);
+
     // For now, return resume URL - in production, this would serve the file
     // If resumePath is a URL, redirect to it
     // If it's a local path, serve the file using res.download()
 
     if (resumePath.startsWith("http")) {
-      // Redirect to URL
+      // Remote URL - redirect to it
+      console.log("[RESUME] Redirecting to external URL:", resumePath);
       return res.redirect(resumePath);
     } else {
-      // Serve local file
+      // Local file - serve it
       const path = require("path");
+      const fs = require("fs");
       const filePath = path.join(__dirname, "../../", resumePath);
-      return res.download(filePath, `${student.name}_resume.pdf`);
+
+      console.log("[RESUME] Serving local file:", filePath);
+
+      // Check if file exists before attempting download
+      if (!fs.existsSync(filePath)) {
+        console.error("[RESUME] File not found:", filePath);
+        return fail(res, 404, "Resume file not found on server");
+      }
+
+      // Set proper headers for PDF download
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${encodeURIComponent(`${student.fullName || student.name || "resume"}_${studentId}.pdf`)}"`
+      );
+
+      // Stream the file
+      return res.download(filePath, `${student.fullName || student.name || "resume"}_${studentId}.pdf`, (err) => {
+        if (err) {
+          console.error("[RESUME DOWNLOAD ERROR]", err.message);
+          // Response already sent, just log error
+        } else {
+          console.log("[RESUME ✓] Successfully sent resume for:", student.email);
+        }
+      });
     }
   } catch (error) {
     console.error("[DOWNLOAD RESUME ERROR]", error);

@@ -10,41 +10,84 @@ import { useAuth } from "../context/AuthContext";
 import { useOpportunities } from "../context/OpportunitiesContext";
 
 const StudentDashboard = ({ role = "Student" }) => {
-  const { opportunities, fetchOpportunities, updateOpportunityApplied } = useOpportunities();
+  const { opportunities, loading, fetchOpportunities } = useOpportunities();
   const { user } = useAuth();
   const [active, setActive] = useState([]);
   const [archive, setArchive] = useState([]);
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState("asc");
   const [filter, setFilter] = useState("all"); // all, applied
-  const [loading, setLoading] = useState(true);
-  const [message] = useState("");
   const [error, setError] = useState("");
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const data = await fetchOpportunities();
-      setActive(data.active || []);
-      setArchive(data.archive || []);
-    } catch (err) {
-      setError(extractApiError(err, "Failed to load opportunities"));
-    } finally {
-      setLoading(false);
-    }
-  }, [fetchOpportunities]);
-
+  /**
+   * Update local state when opportunities from context change
+   * This runs whenever context opportunities are updated
+   */
   useEffect(() => {
-    load();
-  }, [load]);
+    if (opportunities?.active?.length > 0 || opportunities?.archive?.length > 0) {
+      console.log("[DASHBOARD] Updating from context opportunities");
+      setActive(opportunities.active || []);
+      setArchive(opportunities.archive || []);
+      setError("");
+    }
+  }, [opportunities]);
 
+  /**
+   * Initial load on mount
+   * CRITICAL: No hasLoadedRef guard - let deduplicator handle duplicate requests
+   * Ensures remount always triggers fetch (deduplicator will deduplicate concurrent requests)
+   */
+  useEffect(() => {
+    const load = async () => {
+      setError("");
+      try {
+        if (process.env.NODE_ENV === "development") {
+          console.log("[DASHBOARD] Mount: triggering fetch");
+        }
+        await fetchOpportunities();
+      } catch (err) {
+        const errorMsg = extractApiError(err, "Failed to load opportunities");
+        setError(errorMsg);
+        toast.error(errorMsg);
+      }
+    };
+
+    load();
+  }, []); // Empty dependency - runs only once on mount
+
+  /**
+   * Apply to opportunity
+   */
+  const handleApply = useCallback(async (id) => {
+    try {
+      await applyToOpportunity(id);
+      toast.success("Applied successfully!");
+      // Update local state
+      setActive((prev) =>
+        prev.map((opp) =>
+          opp._id === id ? { ...opp, hasApplied: true } : opp
+        )
+      );
+      setError("");
+    } catch (err) {
+      const errorMsg = extractApiError(err, "Failed to apply to opportunity");
+      toast.error(errorMsg);
+      throw err;
+    }
+  }, []);
+
+  /**
+   * Memoized filtered and sorted active opportunities
+   */
   const activeView = useMemo(
     () =>
       [...active]
         .filter((item) => {
-          const matchesSearch = item.announcementHeading.toLowerCase().includes(search.toLowerCase());
-          const matchesFilter = filter === "all" || (filter === "applied" && item.hasApplied);
+          const matchesSearch = item.announcementHeading
+            .toLowerCase()
+            .includes(search.toLowerCase());
+          const matchesFilter =
+            filter === "all" || (filter === "applied" && item.hasApplied);
           return matchesSearch && matchesFilter;
         })
         .sort((a, b) =>
@@ -55,23 +98,17 @@ const StudentDashboard = ({ role = "Student" }) => {
     [active, search, sort, filter]
   );
 
-  const handleApply = useCallback(async (id) => {
-    try {
-      await applyToOpportunity(id);
-      toast.success("Applied successfully!");
-      updateOpportunityApplied(id, true);
-      setError("");
-    } catch (err) {
-      const errorMsg = extractApiError(err, "Failed to apply to opportunity");
-      toast.error(errorMsg);
-      throw err;
-    }
-  }, [updateOpportunityApplied]);
-
+  /**
+   * Memoized filtered and sorted archive opportunities
+   */
   const archiveView = useMemo(
     () =>
       [...archive]
-        .filter((item) => item.announcementHeading.toLowerCase().includes(search.toLowerCase()))
+        .filter((item) =>
+          item.announcementHeading
+            .toLowerCase()
+            .includes(search.toLowerCase())
+        )
         .sort((a, b) =>
           sort === "asc"
             ? new Date(a.lastDate).getTime() - new Date(b.lastDate).getTime()
@@ -84,7 +121,10 @@ const StudentDashboard = ({ role = "Student" }) => {
     <>
       <Layout role={role}>
         <section className="space-y-4 sm:space-y-6">
-          <SectionTitle title={`${role} Dashboard`} subtitle="Explore active opportunities and track archived postings." />
+          <SectionTitle
+            title={`${role} Dashboard`}
+            subtitle="Explore active opportunities and track archived postings."
+          />
           <div className="grid gap-3 sm:gap-4 grid-cols-1 xs:grid-cols-2 xl:grid-cols-3">
             <input
               className="input-modern text-xs sm:text-base"
@@ -109,7 +149,6 @@ const StudentDashboard = ({ role = "Student" }) => {
               <option value="applied">Applied Opportunities</option>
             </select>
           </div>
-          <StatusMessage message={message} />
           <StatusMessage type="error" message={error} />
           {loading ? (
             <div className="py-8 flex justify-center"><Spinner /></div>

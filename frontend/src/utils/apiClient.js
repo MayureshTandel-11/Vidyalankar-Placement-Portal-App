@@ -51,6 +51,7 @@ const api = axios.create({
 /**
  * Request interceptor: Add access token to Authorization header
  * EXCEPT for login/register routes (public endpoints)
+ * Deduplication is handled at the React component level using RequestDeduplicator
  */
 api.interceptors.request.use(
   (config) => {
@@ -62,7 +63,7 @@ api.interceptors.request.use(
       // Remove any existing Authorization header for public routes
       delete config.headers.Authorization;
       if (process.env.NODE_ENV === "development") {
-        console.log(`[API] Request: ${config.method.toUpperCase()} ${config.url} - PUBLIC ROUTE (no auth header)`);
+        console.log(`[API] ${config.method?.toUpperCase()} ${config.url} [PUBLIC]`);
       }
       return config;
     }
@@ -71,17 +72,17 @@ api.interceptors.request.use(
     if (accessToken) {
       config.headers.Authorization = `Bearer ${accessToken}`;
       if (process.env.NODE_ENV === "development") {
-        console.log(`[API] Request: ${config.method.toUpperCase()} ${config.url} with auth token`);
+        console.log(`[API] ${config.method?.toUpperCase()} ${config.url} [AUTH]`);
       }
     } else {
       if (process.env.NODE_ENV === "development") {
-        console.log(`[API] Request: ${config.method.toUpperCase()} ${config.url} - No token`);
+        console.log(`[API] ${config.method?.toUpperCase()} ${config.url} [NO_TOKEN]`);
       }
     }
     return config;
   },
   (error) => {
-    console.error("[API] Request interceptor error:", error.message);
+    console.error("[API REQUEST ERROR]", error.message);
     return Promise.reject(error);
   }
 );
@@ -89,11 +90,12 @@ api.interceptors.request.use(
 /**
  * Response interceptor: Handle 401 errors with token refresh
  * On 401, attempt to refresh token and retry original request once
+ * Cleans up deduplication map after request completes
  */
 api.interceptors.response.use(
   (response) => {
     if (process.env.NODE_ENV === "development") {
-      console.log(`[API ✓] Response: ${response.status} ${response.config.url}`);
+      console.log(`[API ✓] ${response.status} ${response.config.url}`);
     }
     return response;
   },
@@ -106,7 +108,7 @@ api.interceptors.response.use(
 
     // Handle 401 Unauthorized - attempt token refresh
     if (status === 401) {
-      console.warn(`[API 401 UNAUTH] ${method} ${url}`, data);
+      console.warn(`[API 401] ${method} ${url}`, data?.message);
 
       // Don't refresh if already refreshing
       if (isRefreshing) {
@@ -114,8 +116,11 @@ api.interceptors.response.use(
           failedQueue.push({ resolve, reject });
         })
           .then(token => {
-            config.headers.Authorization = `Bearer ${token}`;
-            return api(config);
+            if (token) {
+              config.headers.Authorization = `Bearer ${token}`;
+              return api(config);
+            }
+            return Promise.reject(error);
           })
           .catch(err => {
             return Promise.reject(err);
@@ -171,23 +176,17 @@ api.interceptors.response.use(
 
     // Handle other HTTP errors
     if (status === 403) {
-      console.error(`[API 403 FORBIDDEN] ${method} ${url}`, data, {
-        reason: "Check role/verification/department permissions",
-        message: data?.message
-      });
+      console.error(`[API 403 FORBIDDEN] ${method} ${url}`, data?.message);
     } else if (status === 400) {
-      console.error(`[API 400 BAD REQUEST] ${method} ${url}`, data);
+      console.error(`[API 400 BAD REQUEST] ${method} ${url}`, data?.message);
     } else if (status === 500) {
-      console.error(`[API 500 ERROR] ${method} ${url}`, {
-        message: data?.message,
-        details: data?.details,
-      });
+      console.error(`[API 500 ERROR] ${method} ${url}`, data?.message);
     } else if (status === 429) {
-      console.error(`[API 429 RATE LIMITED] ${method} ${url}`, data);
+      console.error(`[API 429 RATE LIMITED] ${method} ${url}`);
     } else if (!status) {
-      console.error(`[API ERROR] Network/CORS issue on ${method} ${url}`, error.message);
+      console.error(`[API ERROR] Network/CORS issue on ${method} ${url}`);
     } else {
-      console.error(`[API ${status}] ${method} ${url}`, data);
+      console.error(`[API ${status}] ${method} ${url}`, data?.message);
     }
 
     return Promise.reject(error);
@@ -197,8 +196,17 @@ api.interceptors.response.use(
 /**
  * Set access token in memory
  * Called after successful login/registration/refresh
+ * Only updates if token has changed
  */
 export const setAccessToken = (token) => {
+  // Only update if token actually changed
+  if (accessToken === token) {
+    if (process.env.NODE_ENV === "development") {
+      console.log("[AUTH] Token unchanged, skipping duplicate set");
+    }
+    return;
+  }
+
   accessToken = token;
   authDebug.tokenOp("SET", token, {
     status: token ? "✓ Set" : "⚠ Cleared",

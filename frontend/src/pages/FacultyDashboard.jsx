@@ -11,48 +11,100 @@ import { getApplicantsCount, deleteOpportunity } from "../services/opportunities
 
 const FacultyDashboard = () => {
   const navigate = useNavigate();
-  const { fetchOpportunities } = useOpportunities();
+  const { opportunities, loading, fetchOpportunities } = useOpportunities();
   const [active, setActive] = useState([]);
   const [archive, setArchive] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [applicantCounts, setApplicantCounts] = useState({});
   const [deletingId, setDeletingId] = useState("");
+  const [countsLoading, setCountsLoading] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
+  /**
+   * Update local state when opportunities from context change
+   */
+  useEffect(() => {
+    if (opportunities?.active?.length > 0 || opportunities?.archive?.length > 0) {
+      if (process.env.NODE_ENV === "development") {
+        console.log("[FACULTY DASHBOARD] Updating from context opportunities");
+      }
+      setActive(opportunities.active || []);
+      setArchive(opportunities.archive || []);
+      setError("");
+    }
+  }, [opportunities]);
+
+  /**
+   * Load applicant counts
+   * CRITICAL: No countsLoadedRef guard - reload when opportunities change
+   */
+  const loadApplicantCounts = useCallback(async () => {
+    const allOpportunities = [...active, ...archive];
+    if (allOpportunities.length === 0) {
+      if (process.env.NODE_ENV === "development") {
+        console.log("[FACULTY DASHBOARD] No opportunities to load counts for");
+      }
+      return;
+    }
+
+    setCountsLoading(true);
+    const counts = {};
     try {
-      const data = await fetchOpportunities();
-      const activeData = data.active || [];
-      const archiveData = data.archive || [];
-      setActive(activeData);
-      setArchive(archiveData);
+      if (process.env.NODE_ENV === "development") {
+        console.log("[FACULTY DASHBOARD] Loading applicant counts for", allOpportunities.length, "opportunities");
+      }
 
-      // Fetch applicant counts for own opportunities (keep for now)
-      const allOpportunities = [...activeData, ...archiveData];
-      const counts = {};
       await Promise.all(
         allOpportunities.map(async (opp) => {
           try {
             const countData = await getApplicantsCount(opp._id);
             counts[opp._id] = countData.count;
           } catch (err) {
-            console.error(`Failed to fetch count for ${opp._id}:`, err);
+            console.error(`[FACULTY DASHBOARD] Failed to fetch count for ${opp._id}:`, err);
           }
         })
       );
       setApplicantCounts(counts);
-    } catch (err) {
-      setError(extractApiError(err, "Failed to load dashboard opportunities"));
-    } finally {
-      setLoading(false);
-    }
-  }, [fetchOpportunities]);
 
+      if (process.env.NODE_ENV === "development") {
+        console.log("[FACULTY DASHBOARD] Applicant counts loaded:", counts);
+      }
+    } catch (err) {
+      console.error("[FACULTY DASHBOARD] Failed to load applicant counts:", err);
+    } finally {
+      setCountsLoading(false);
+    }
+  }, [active, archive]);
+
+  /**
+   * Initial load on mount
+   * CRITICAL: No hasLoadedRef guard - let deduplicator handle duplicate requests
+   */
   useEffect(() => {
+    const load = async () => {
+      setError("");
+      try {
+        if (process.env.NODE_ENV === "development") {
+          console.log("[FACULTY DASHBOARD] Mount: triggering fetch");
+        }
+        await fetchOpportunities();
+      } catch (err) {
+        const errorMsg = extractApiError(err, "Failed to load dashboard opportunities");
+        setError(errorMsg);
+        toast.error(errorMsg);
+      }
+    };
+
     load();
-  }, [load]);
+  }, []); // Empty dependency - runs only once on mount
+
+  /**
+   * Load applicant counts after opportunities are loaded
+   */
+  useEffect(() => {
+    if (active.length > 0 || archive.length > 0) {
+      loadApplicantCounts();
+    }
+  }, [active.length, archive.length, loadApplicantCounts]);
 
   const handleEdit = (opportunity) => {
     navigate(`/faculty/opportunities?edit=${opportunity._id}`);

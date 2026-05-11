@@ -189,7 +189,7 @@ router.patch("/:opportunityId", protect, allowRoles("faculty", "admin"), async (
         markedBy: req.user._id,
         markedAt: new Date(),
       },
-      { new: true }
+      { returnDocument: "after" }
     );
 
     if (!attendanceRecord) {
@@ -655,6 +655,251 @@ router.post("/select-next-round/:opportunityId/:stage", protect, allowRoles("fac
     });
 
     return res.status(500).json({ message: error.message || "Failed to select students for next round" });
+  }
+});
+
+// POST /api/attendance/manual-select/:opportunityId/:stage
+// Faculty and Admin only - manually select students after attendance submission
+// Requirements:
+// - Attendance must be submitted for this stage
+// - Cannot select absent students
+// - Cannot select duplicate students
+router.post("/manual-select/:opportunityId/:stage", protect, allowRoles("faculty", "admin"), async (req, res) => {
+  try {
+    const { opportunityId, stage } = req.params;
+    const { selectedStudentIds = [] } = req.body;
+
+    // Validate stage is not General Update
+    const stageValidation = validateStageNotGeneralUpdate(stage);
+    if (!stageValidation.isValid) {
+      return res.status(stageValidation.error.status).json({
+        success: false,
+        message: stageValidation.error.message,
+      });
+    }
+
+    // Validate ObjectId
+    if (!mongoose.Types.ObjectId.isValid(opportunityId)) {
+      return res.status(400).json({ message: "Invalid opportunity ID format" });
+    }
+
+    if (!Array.isArray(selectedStudentIds)) {
+      return res.status(400).json({ message: "selectedStudentIds must be an array" });
+    }
+
+    if (selectedStudentIds.length === 0) {
+      return res.status(400).json({ message: "At least one student must be selected" });
+    }
+
+    // Fetch opportunity
+    const opportunity = await Opportunity.findById(opportunityId);
+    if (!opportunity) {
+      return res.status(404).json({ message: "Opportunity not found" });
+    }
+
+    // Check if attendance has been submitted for this stage
+    const stageStatus = opportunity.stageAttendanceStatus?.find((s) => s.stage === stage);
+    if (!stageStatus?.isSubmitted) {
+      return res.status(403).json({
+        message: "Attendance must be submitted before manual selection",
+      });
+    }
+
+    // Fetch attendance records for this stage to validate selections
+    const attendanceRecords = await OpportunityAttendance.find({
+      opportunityId: new mongoose.Types.ObjectId(opportunityId),
+      stage,
+    });
+
+    // Create a map of attendance by studentId
+    const attendanceMap = {};
+    attendanceRecords.forEach((record) => {
+      attendanceMap[record.studentId] = record.status;
+    });
+
+    // Validate that all selected students were present
+    const invalidSelections = selectedStudentIds.filter(
+      (studentId) => attendanceMap[studentId] === "absent"
+    );
+
+    if (invalidSelections.length > 0) {
+      return res.status(400).json({
+        message: `Cannot select absent students: ${invalidSelections.join(", ")}`,
+      });
+    }
+
+    // Check for duplicates
+    const uniqueSelections = new Set(selectedStudentIds);
+    if (uniqueSelections.size !== selectedStudentIds.length) {
+      return res.status(400).json({
+        message: "Duplicate student selections found",
+      });
+    }
+
+    // Update or create manual selection record for this stage
+    let manualSelection = opportunity.stageManualSelections?.find((s) => s.stage === stage);
+
+    if (manualSelection) {
+      // Update existing
+      manualSelection.selectedStudentIds = selectedStudentIds;
+      manualSelection.selectedAt = new Date();
+      manualSelection.selectedBy = req.user._id;
+    } else {
+      // Create new
+      opportunity.stageManualSelections.push({
+        stage,
+        selectedStudentIds,
+        selectedAt: new Date(),
+        selectedBy: req.user._id,
+      });
+    }
+
+    await opportunity.save();
+
+    // Emit Socket.IO event
+    const io = getIO();
+    if (io) {
+      io.to(`opportunity_${opportunityId}`).emit("manual:selection:updated", {
+        stage,
+        selectedCount: selectedStudentIds.length,
+        selectedBy: req.user.name,
+        selectedAt: new Date(),
+      });
+    }
+
+    return res.status(200).json({
+      data: {
+        stage,
+        selectedStudentIds,
+        selectedAt: new Date(),
+      },
+      message: `Successfully selected ${selectedStudentIds.length} students for ${stage}`,
+    });
+  } catch (error) {
+    console.error("[MANUAL SELECT ERROR]", {
+      opportunityId: req.params.opportunityId,
+      stage: req.params.stage,
+      error: error.name,
+      message: error.message,
+      stack: error.stack,
+    });
+
+    if (error.name === "CastError") {
+      return res.status(400).json({ message: "Invalid ID provided" });
+    }
+
+    if (error.name === "ValidationError") {
+      return res.status(400).json({ message: Object.values(error.errors)[0].message });
+    }
+
+    return res.status(500).json({ message: error.message || "Failed to save manual selections" });
+  }
+});
+
+// GET /api/attendance/manual-selections/:opportunityId/:stage
+// Faculty and Admin only - fetch manually selected students for a stage
+router.get("/manual-selections/:opportunityId/:stage", protect, allowRoles("faculty", "admin"), async (req, res) => {
+  try {
+    const { opportunityId, stage } = req.params;
+
+    // Validate stage is not General Update
+    const stageValidation = validateStageNotGeneralUpdate(stage);
+    if (!stageValidation.isValid) {
+      return res.status(stageValidation.error.status).json({
+        success: false,
+        message: stageValidation.error.message,
+      });
+    }
+
+    // Validate ObjectId
+    if (!mongoose.Types.ObjectId.isValid(opportunityId)) {
+      return res.status(400).json({ message: "Invalid opportunity ID format" });
+    }
+
+    // Fetch opportunity
+    const opportunity = await Opportunity.findById(opportunityId);
+    if (!opportunity) {
+      return res.status(404).json({ message: "Opportunity not found" });
+    }
+
+    // Get manual selections for this stage
+    const manualSelection = opportunity.stageManualSelections?.find((s) => s.stage === stage);
+
+    if (!manualSelection) {
+      return res.status(200).json({
+        data: {
+          stage,
+          selectedStudentIds: [],
+          selectedAt: null,
+          selectedBy: null,
+        },
+        message: "No manual selections found for this stage",
+      });
+    }
+
+    // Fetch attendance status for selected students
+    const attendanceRecords = await OpportunityAttendance.find({
+      opportunityId: new mongoose.Types.ObjectId(opportunityId),
+      studentId: { $in: manualSelection.selectedStudentIds },
+      stage,
+    });
+
+    // Create a map of studentId -> attendance info
+    const attendanceMap = {};
+    attendanceRecords.forEach((record) => {
+      attendanceMap[record.studentId] = {
+        status: record.status,
+        markedBy: record.markedBy,
+        markedAt: record.markedAt,
+      };
+    });
+
+    // Enrich selection with student details from applications
+    const applicantMap = {};
+    if (opportunity.applications && Array.isArray(opportunity.applications)) {
+      opportunity.applications.forEach((app) => {
+        applicantMap[app.studentId] = {
+          _id: app.studentId,
+          name: app.studentName,
+          studentId: app.studentId,
+          email: app.studentEmail,
+          department: app.studentDepartment,
+        };
+      });
+    }
+
+    const selectedStudentsDetails = manualSelection.selectedStudentIds.map((studentId) => ({
+      studentId,
+      name: applicantMap[studentId]?.name || "Unknown",
+      email: applicantMap[studentId]?.email || "N/A",
+      department: applicantMap[studentId]?.department || "N/A",
+      attendance: attendanceMap[studentId] || { status: "N/A" },
+    }));
+
+    return res.status(200).json({
+      data: {
+        stage,
+        selectedStudentIds: manualSelection.selectedStudentIds,
+        selectedStudentsDetails,
+        selectedAt: manualSelection.selectedAt,
+        selectedBy: manualSelection.selectedBy,
+      },
+      message: "Manual selections fetched successfully",
+    });
+  } catch (error) {
+    console.error("[MANUAL SELECTIONS GET ERROR]", {
+      opportunityId: req.params.opportunityId,
+      stage: req.params.stage,
+      error: error.name,
+      message: error.message,
+      stack: error.stack,
+    });
+
+    if (error.name === "CastError") {
+      return res.status(400).json({ message: "Invalid opportunity ID" });
+    }
+
+    return res.status(500).json({ message: error.message || "Failed to fetch manual selections" });
   }
 });
 

@@ -21,6 +21,7 @@ const otpSchema = new mongoose.Schema(
       phone: { type: String },
       department: { type: String },
       password: { type: String }, // Hashed password
+      year: { type: String }, // Year (1st Year, 2nd Year, 3rd Year, 4th Year)
     },
   },
   { timestamps: true }

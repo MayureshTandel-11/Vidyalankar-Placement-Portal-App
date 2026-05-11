@@ -116,10 +116,21 @@ const registerStudent = async (req, res) => {
     const department = sanitizeString(req.body.department);
     const email = sanitizeString(req.body.email);
     const phone = sanitizeString(req.body.phone);
+    const year = sanitizeString(req.body.year);
     const password = sanitizeString(req.body.password);
 
-    if (!name || !studentId || !department || !email || !phone || !password) {
-      return fail(res, 400, "Name, student ID, email, department, phone and password are required");
+    console.log(`[AUTH][REGISTER] Incoming registration payload for ${studentId}:`, {
+      name: !!name,
+      studentId: !!studentId,
+      email: !!email,
+      phone: !!phone,
+      department: !!department,
+      year: !!year,
+      password: !!password,
+    });
+
+    if (!name || !studentId || !department || !email || !phone || !year || !password) {
+      return fail(res, 400, "Name, student ID, email, department, year, phone and password are required");
     }
     if (!instituteEmailRegex.test(email)) {
       return fail(res, 400, "Email must follow name.surname@vsit.edu.in format");
@@ -129,6 +140,10 @@ const registerStudent = async (req, res) => {
     }
     if (!isValidDepartment(department)) {
       return fail(res, 400, "Invalid department");
+    }
+    const validYears = ["1st Year", "2nd Year", "3rd Year", "4th Year"];
+    if (!validYears.includes(year)) {
+      return fail(res, 400, "Year must be one of: 1st Year, 2nd Year, 3rd Year, 4th Year");
     }
     if (!/^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/.test(password)) {
       return fail(res, 400, "Password must be 8+ chars with uppercase, number and special character");
@@ -173,14 +188,16 @@ const registerStudent = async (req, res) => {
           name,
           phone,
           department,
+          year,
           password: hashedPassword,
         },
       },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: "after" }
     );
 
     // Ensure OTP was created before proceeding
     if (!otpDoc) {
+      console.error(`[AUTH][REGISTER] Failed to create OTP document for ${studentId}`);
       return fail(res, 500, "Failed to create OTP. Please try again.");
     }
 
@@ -193,10 +210,11 @@ const registerStudent = async (req, res) => {
       } catch (mailError) {
         otpDelivery = "failed";
         otpDeliveryError = mailError.message;
+        console.warn(`[AUTH][REGISTER] Email delivery failed for ${studentId}:`, mailError.message);
       }
     }
 
-    console.log(`[AUTH][REGISTER] Registration initiated for ${studentId} (${email}). OTP created (not verified yet).`);
+    console.log(`[AUTH][REGISTER] ✓ Registration initiated for ${studentId} (${email}). OTP created (not verified yet). Delivery: ${otpDelivery}`);
 
     return ok(
       res,
@@ -208,6 +226,7 @@ const registerStudent = async (req, res) => {
       201
     );
   } catch (error) {
+    console.error(`[AUTH][REGISTER][ERROR]`, error.message);
     return fail(res, 500, "Registration failed", error.message);
   }
 };
@@ -262,10 +281,24 @@ const verifyOtp = async (req, res) => {
     }
 
     const registrationData = otpDoc.registrationData;
-    if (!registrationData || !registrationData.name || !registrationData.phone || !registrationData.department || !registrationData.password) {
-      console.error(`[AUTH][VERIFY_OTP] Missing registration data for studentId: ${studentId}`);
+    if (!registrationData || !registrationData.name || !registrationData.phone || !registrationData.department || !registrationData.password || !registrationData.year) {
+      console.error(`[AUTH][VERIFY_OTP] Missing registration data for studentId: ${studentId}`, {
+        name: !!registrationData?.name,
+        phone: !!registrationData?.phone,
+        department: !!registrationData?.department,
+        password: !!registrationData?.password,
+        year: !!registrationData?.year,
+      });
       return fail(res, 500, "Registration data corrupted. Please register again.");
     }
+
+    console.log(`[AUTH][CREATE_USER] Creating user with data for ${studentId}:`, {
+      name: registrationData.name,
+      studentId,
+      department: registrationData.department,
+      year: registrationData.year,
+      phone: registrationData.phone,
+    });
 
     // Create user with isVerified: true
     const user = await User.create({
@@ -275,6 +308,7 @@ const verifyOtp = async (req, res) => {
       role: "student",
       email: otpDoc.email,
       phone: registrationData.phone,
+      year: registrationData.year,
       password: registrationData.password,
       isVerified: true,
     });

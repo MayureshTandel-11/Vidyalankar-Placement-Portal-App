@@ -1,5 +1,6 @@
 const Opportunity = require("../models/Opportunity");
 const OpportunityAttendance = require("../models/OpportunityAttendance");
+const mongoose = require("mongoose");
 const { sanitizeString } = require("../utils/sanitize");
 const { ok, fail } = require("../utils/apiResponse");
 const { getTodayStart, normalizeDateToStartOfDay, getStatusFromLastDate } = require("../utils/dateUtils");
@@ -369,7 +370,7 @@ const updateOpportunity = async (req, res) => {
       return fail(res, 400, validationError);
     }
 
-    const updated = await Opportunity.findByIdAndUpdate(req.params.id, payload, { new: true });
+    const updated = await Opportunity.findByIdAndUpdate(req.params.id, payload, { returnDocument: "after" });
     console.log('[OPPORTUNITIES][UPDATED]', {
       id: req.params.id,
       updatedBy: req.user._id,
@@ -664,6 +665,156 @@ const getOpportunityApplications = async (req, res) => {
   }
 };
 
+/**
+ * Save manual student selections for a specific stage
+ * POST /api/opportunity/:opportunityId/stage/:stage/selections
+ * Body: { selectedStudentIds: ["studentId1", "studentId2", ...] }
+ * Faculty/Admin can select students for their/all opportunities
+ */
+const saveStageSelections = async (req, res) => {
+  try {
+    const { opportunityId, stage } = req.params;
+    const { selectedStudentIds } = req.body;
+
+    // Validate inputs
+    if (!opportunityId || !mongoose.Types.ObjectId.isValid(opportunityId)) {
+      return fail(res, 400, "Invalid opportunity ID");
+    }
+
+    const validStages = [
+      "Aptitude Test",
+      "Group Discussion",
+      "Technical Interview",
+      "HR Interview",
+      "Result",
+    ];
+    if (!stage || !validStages.includes(stage)) {
+      return fail(res, 400, `Invalid stage. Must be one of: ${validStages.join(", ")}`);
+    }
+
+    if (!Array.isArray(selectedStudentIds)) {
+      return fail(res, 400, "selectedStudentIds must be an array");
+    }
+
+    // Fetch opportunity
+    const opportunity = await Opportunity.findById(opportunityId);
+    if (!opportunity) {
+      return fail(res, 404, "Opportunity not found");
+    }
+
+    // Check authorization (faculty can only update their opportunities, admin can update any)
+    if (req.user.role === "faculty" && String(opportunity.createdBy) !== String(req.user._id)) {
+      return fail(res, 403, "You can only manage selections for your own opportunities");
+    }
+
+    // Sanitize student IDs
+    const sanitizedIds = selectedStudentIds
+      .map(id => sanitizeString(String(id)).trim())
+      .filter(Boolean);
+
+    // Find existing stage selection or create new one
+    let stageSelection = opportunity.stageManualSelections?.find(
+      (s) => s.stage === stage
+    );
+
+    if (stageSelection) {
+      // Update existing
+      stageSelection.selectedStudentIds = sanitizedIds;
+      stageSelection.selectedAt = new Date();
+      stageSelection.selectedBy = req.user._id;
+    } else {
+      // Create new
+      opportunity.stageManualSelections = opportunity.stageManualSelections || [];
+      opportunity.stageManualSelections.push({
+        stage,
+        selectedStudentIds: sanitizedIds,
+        selectedAt: new Date(),
+        selectedBy: req.user._id,
+      });
+    }
+
+    // Save to database
+    const updatedOpportunity = await opportunity.save();
+
+    console.log(`[OPPORTUNITY SELECTIONS][${req.user.role.toUpperCase()}]`, {
+      opportunityId: updatedOpportunity._id,
+      stage,
+      selectedCount: sanitizedIds.length,
+      userId: req.user._id,
+      email: req.user.email,
+    });
+
+    return ok(res, {
+      opportunityId: updatedOpportunity._id,
+      stage,
+      selectedStudentIds: sanitizedIds,
+      selectedAt: new Date(),
+      message: `Successfully saved ${sanitizedIds.length} student(s) for ${stage}`,
+    });
+  } catch (error) {
+    console.error("[SAVE STAGE SELECTIONS ERROR]", error);
+    return fail(res, 500, "Failed to save student selections", error.message);
+  }
+};
+
+/**
+ * Get manual student selections for a specific stage
+ * GET /api/opportunity/:opportunityId/stage/:stage/selections
+ */
+const getStageSelections = async (req, res) => {
+  try {
+    const { opportunityId, stage } = req.params;
+
+    // Validate inputs
+    if (!opportunityId || !mongoose.Types.ObjectId.isValid(opportunityId)) {
+      return fail(res, 400, "Invalid opportunity ID");
+    }
+
+    const validStages = [
+      "Aptitude Test",
+      "Group Discussion",
+      "Technical Interview",
+      "HR Interview",
+      "Result",
+    ];
+    if (!stage || !validStages.includes(stage)) {
+      return fail(res, 400, `Invalid stage. Must be one of: ${validStages.join(", ")}`);
+    }
+
+    // Fetch opportunity
+    const opportunity = await Opportunity.findById(opportunityId).select(
+      "stageManualSelections selectedStudents"
+    ).lean();
+    if (!opportunity) {
+      return fail(res, 404, "Opportunity not found");
+    }
+
+    // Check authorization
+    if (req.user.role === "faculty") {
+      const opp = await Opportunity.findById(opportunityId);
+      if (String(opp.createdBy) !== String(req.user._id)) {
+        return fail(res, 403, "You can only view selections for your own opportunities");
+      }
+    }
+
+    // Find stage selection
+    const stageSelection = opportunity.stageManualSelections?.find(
+      (s) => s.stage === stage
+    );
+
+    return ok(res, {
+      opportunityId,
+      stage,
+      selectedStudentIds: stageSelection?.selectedStudentIds || [],
+      selectedAt: stageSelection?.selectedAt || null,
+      selectedBy: stageSelection?.selectedBy || null,
+    });
+  } catch (error) {
+    console.error("[GET STAGE SELECTIONS ERROR]", error);
+    return fail(res, 500, "Failed to fetch student selections", error.message);
+  }
+};
+
 module.exports = {
   listOpportunities,
   getOpportunityById,
@@ -676,4 +827,6 @@ module.exports = {
   getApplicantsCount,
   getApplicants,
   getOpportunityApplications,
+  saveStageSelections,
+  getStageSelections,
 };

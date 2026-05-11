@@ -82,6 +82,30 @@ const opportunitySchema = new mongoose.Schema(
         default: 0,
       },
     }],
+    // Track manual selections per stage (enabled after attendance submission)
+    stageManualSelections: [{
+      stage: {
+        type: String,
+        enum: [
+          "Aptitude Test",
+          "Group Discussion",
+          "Technical Interview",
+          "HR Interview",
+          "Result",
+        ],
+      },
+      selectedStudentIds: [
+        {
+          type: String, // studentId
+        },
+      ],
+      selectedAt: Date,
+      selectedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+      },
+      _id: false,
+    }],
     // Stage tracking: attended and selected students per stage
     stages: {
       aptitude: {

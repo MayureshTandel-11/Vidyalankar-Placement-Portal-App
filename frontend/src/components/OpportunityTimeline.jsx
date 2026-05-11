@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import api from "../api";
 import { useOpportunities } from "../context/OpportunitiesContext";
 import { getSocket } from "../utils/socket";
@@ -109,17 +109,55 @@ const stageOrder = [
     setIsPosting(true);
     setError("");
 
+    // Create optimistic entry for immediate UI update
+    const optimisticEntry = {
+      _id: `temp_${Date.now()}`,
+      stage: selectedStage,
+      comment: newComment,
+      postedBy: { name: "You" },
+      role: "faculty",
+      isStageActivation: activateStage && selectedStage !== "General Update",
+      createdAt: new Date().toISOString(),
+    };
+
     try {
-      await api.post(`/timeline/${opportunityId}`, {
+      // Add optimistic entry immediately
+      setTimelineEntries((prev) => [...(Array.isArray(prev) ? prev : []), optimisticEntry]);
+
+      const response = await api.post(`/timeline/${opportunityId}`, {
         stage: selectedStage,
         comment: newComment,
         activateStage: activateStage && selectedStage !== "General Update",
       });
 
+      // If stage was activated, update local active stages
+      if (activateStage && selectedStage !== "General Update") {
+        setLocalActiveStages((prev) => {
+          const updated = Array.isArray(prev) ? [...prev] : [];
+          if (!updated.includes(selectedStage)) {
+            updated.push(selectedStage);
+          }
+          return updated;
+        });
+      }
+
+      // Replace optimistic entry with real one
+      setTimelineEntries((prev) =>
+        prev.map((entry) =>
+          entry._id === optimisticEntry._id ? response.data?.data : entry
+        )
+      );
+
+      // Invalidate cache so next fetch gets fresh data
+      invalidateTimelineCache(opportunityId);
+
       setNewComment("");
       setSelectedStage("");
       setActivateStage(false);
     } catch (err) {
+      // Remove optimistic entry on error
+      setTimelineEntries((prev) => prev.filter((entry) => entry._id !== optimisticEntry._id));
+
       const errorMessage = err.response?.data?.message || err.message || "Failed to post update";
       setError(errorMessage);
       console.error("[POST TIMELINE ERROR]", err);

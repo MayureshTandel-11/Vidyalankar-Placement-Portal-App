@@ -16,14 +16,22 @@ const getStudentAnalytics = async (req, res) => {
   try {
     const { studentId } = req.params;
 
+    // Validate input - defensive check to prevent /analytics/null
+    if (!studentId || studentId === "null" || String(studentId).trim() === "") {
+      console.warn("[ANALYTICS] Invalid studentId parameter:", studentId);
+      return res.status(400).json({ message: "Invalid student ID" });
+    }
+
     // Find student
     const student = await User.findOne({ studentId }).lean();
     if (!student) {
+      console.warn("[ANALYTICS] Student not found:", studentId);
       return res.status(404).json({ message: "Student not found" });
     }
 
     // Check authorization (faculty can only view their department students)
     if (req.user.role === "faculty" && student.department !== req.user.department) {
+      console.warn("[ANALYTICS] Unauthorized faculty access:", { faculty: req.user.email, student: student.email });
       return res.status(403).json({ message: "You can only view analytics for students in your department" });
     }
 

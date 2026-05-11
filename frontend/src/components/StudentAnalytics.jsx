@@ -20,10 +20,26 @@ const StudentAnalytics = ({ studentId }) => {
   const [showDetailsModal, setShowDetailsModal] = useState(false);
 
   useEffect(() => {
+    // Guard: only fetch if studentId is valid
+    if (!studentId || studentId === "null" || studentId === "undefined") {
+      console.warn("[ANALYTICS] Invalid studentId:", studentId);
+      setError("Invalid student selected. Please select a valid student.");
+      setIsLoading(false);
+      return;
+    }
+
     fetchAnalytics();
   }, [studentId]);
 
   const fetchAnalytics = async () => {
+    // Guard: validate studentId before API call
+    if (!studentId || studentId === "null" || studentId === "undefined") {
+      console.warn("[ANALYTICS] fetchAnalytics called with invalid studentId:", studentId);
+      setError("Invalid student ID");
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     setError("");
 
@@ -40,12 +56,26 @@ const StudentAnalytics = ({ studentId }) => {
   };
 
   const fetchOpportunityDetails = async (opportunityId) => {
+    // Guard: validate IDs before API call
+    if (!opportunityId || opportunityId === "null") {
+      console.warn("[ANALYTICS] Invalid opportunityId:", opportunityId);
+      setError("Invalid opportunity selected");
+      return;
+    }
+
+    if (!studentId || studentId === "null") {
+      console.warn("[ANALYTICS] Invalid studentId in fetchOpportunityDetails:", studentId);
+      setError("Invalid student ID");
+      return;
+    }
+
     try {
       const response = await api.get(`/student/analytics/opportunity/${opportunityId}/${studentId}`);
       setOpportunityDetails(response.data?.data);
       setShowDetailsModal(true);
     } catch (err) {
       setError("Failed to fetch opportunity details");
+      console.error("[FETCH OPPORTUNITY DETAILS ERROR]", err);
     }
   };
 
