@@ -20,15 +20,17 @@ const FacultyDashboard = () => {
   const [countsLoading, setCountsLoading] = useState(false);
 
   /**
-   * Update local state when opportunities from context change
+   * Update local state whenever context opportunities change.
+   * FIX: Removed the length > 0 guard — it was preventing state update after
+   * a page refresh where context initialises empty then fills asynchronously.
    */
   useEffect(() => {
-    if (opportunities?.active?.length > 0 || opportunities?.archive?.length > 0) {
-      if (process.env.NODE_ENV === "development") {
-        console.log("[FACULTY DASHBOARD] Updating from context opportunities");
-      }
-      setActive(opportunities.active || []);
-      setArchive(opportunities.archive || []);
+    if (process.env.NODE_ENV === "development") {
+      console.log("[FACULTY DASHBOARD] Updating from context opportunities");
+    }
+    setActive(opportunities?.active || []);
+    setArchive(opportunities?.archive || []);
+    if (opportunities?.active || opportunities?.archive) {
       setError("");
     }
   }, [opportunities]);

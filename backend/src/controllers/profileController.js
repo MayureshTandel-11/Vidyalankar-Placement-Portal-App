@@ -418,8 +418,8 @@ const uploadResume = async (req, res) => {
     }
 
     // Construct resume URL/path
-    // This assumes file is stored at uploads/resume/{studentId}/{filename}
-    const resumeUrl = `uploads/resume/${req.user._id}/${req.file.filename}`;
+    // Multer stores files at uploads/resumes/{filename} (see uploadMiddleware.js destination)
+    const resumeUrl = `uploads/resumes/${req.file.filename}`;
 
     const student = await User.findByIdAndUpdate(
       req.user._id,

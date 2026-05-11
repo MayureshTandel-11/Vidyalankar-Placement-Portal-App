@@ -90,6 +90,10 @@ app.use(cors(corsOptions));
 // Body parsing
 app.use(express.json());
 
+// Serve uploaded resume files as static assets (for direct URL access)
+// Files are stored at backend/uploads/resumes/ and accessible at /uploads/resumes/<filename>
+app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
+
 
 // SECURITY: Global rate limiting (100 requests per 15 minutes per IP)
 app.use(globalLimiter);

@@ -43,12 +43,15 @@ router.get("/management/:studentId", protect, allowRoles("faculty", "admin"), ge
 // Analytics Routes
 // ========================================
 
-// Get student analytics (accessible by admin, faculty, and student themselves)
+// IMPORTANT: /analytics/class and /analytics/opportunity/:... must be declared
+// BEFORE /analytics/:studentId, otherwise Express matches "class" as a studentId param.
+
+// Get class/department analytics (Faculty/Admin only)
 router.get(
-  "/analytics/:studentId",
+  "/analytics/class",
   protect,
-  allowRoles("student", "faculty", "admin"),
-  getStudentAnalytics
+  allowRoles("faculty", "admin"),
+  getClassAnalytics
 );
 
 // Get opportunity-specific analytics
@@ -59,12 +62,12 @@ router.get(
   getOpportunityAnalytics
 );
 
-// Get class/department analytics (Faculty/Admin only)
+// Get student analytics (accessible by admin, faculty, and student themselves)
 router.get(
-  "/analytics/class",
+  "/analytics/:studentId",
   protect,
-  allowRoles("faculty", "admin"),
-  getClassAnalytics
+  allowRoles("student", "faculty", "admin"),
+  getStudentAnalytics
 );
 
 module.exports = router;
