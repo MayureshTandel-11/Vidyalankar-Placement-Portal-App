@@ -500,9 +500,9 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
         </div>
       )}
 
-      <div className="rounded-lg border border-slate-200 bg-white p-4">
+      <div className="rounded-lg border border-[#B70D23]/30 bg-white p-4">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-slate-800">Select Stage</h3>
+          <h3 className="text-sm font-semibold text-[#B70D23]">Select Stage</h3>
           {/* View Mode Toggle - Only show after attendance submission */}
           {isStageSubmitted && !isGeneralUpdate && (
             <div className="flex gap-2">
@@ -510,7 +510,7 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
                 onClick={() => setViewMode("attendance")}
                 className={`px-3 py-1 text-xs font-medium rounded transition ${
                   viewMode === "attendance"
-                    ? "bg-red-600 text-white"
+                    ? "bg-[#B70D23] text-white"
                     : "bg-slate-100 text-slate-700 hover:bg-slate-200"
                 }`}
               >
@@ -525,7 +525,7 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
                 }}
                 className={`px-3 py-1 text-xs font-medium rounded transition flex items-center gap-1 ${
                   viewMode === "manual-select"
-                    ? "bg-purple-600 text-white"
+                    ? "bg-[#B70D23] text-white"
                     : "bg-slate-100 text-slate-700 hover:bg-slate-200"
                 }`}
               >
@@ -554,7 +554,7 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
                   disabled={!isEnabled}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap ${
                     isActive
-                      ? "bg-indigo-600 text-white shadow-md"
+                      ? "bg-[#B70D23] text-white shadow-md"
                       : isEnabled
                       ? "bg-slate-100 text-slate-800 hover:bg-slate-200"
                       : "bg-slate-50 text-slate-400 cursor-not-allowed opacity-50"
@@ -579,7 +579,7 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
                 onClick={() => setSelectedStage("General Update")}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap ${
                   selectedStage === "General Update"
-                    ? "bg-slate-600 text-white shadow-md"
+                    ? "bg-[#B70D23] text-white shadow-md"
                     : "bg-slate-100 text-slate-800 hover:bg-slate-200"
                 }`}
               >
@@ -919,7 +919,7 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
             <button
               onClick={handleSaveManualSelections}
               disabled={isSavingManual || manualSelectedIds.length === 0}
-              className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-2 px-4 py-2 bg-[#B70D23] hover:bg-[#8B0A1A] text-white rounded-lg text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSavingManual ? (
                 <>
@@ -940,7 +940,7 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
             <button
               onClick={() => setShowSelectionConfirm(true)}
               disabled={isSelectingNextRound}
-              className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-2 px-4 py-2 bg-[#B70D23] hover:bg-[#8B0A1A] text-white rounded-lg text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSelectingNextRound ? (
                 <>
@@ -959,7 +959,7 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
           <button
             onClick={handleDownloadAttendance}
             disabled={isDownloading || !isStageSubmitted}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-4 py-2 bg-[#B70D23] hover:bg-[#8B0A1A] text-white rounded-lg text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isDownloading ? (
               <>
@@ -977,7 +977,7 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
           <button
             onClick={() => setShowConfirmModal(true)}
             disabled={isSubmitting || isStageSubmitted}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-4 py-2 bg-[#B70D23] hover:bg-[#8B0A1A] text-white rounded-lg text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isSubmitting ? (
               <>
@@ -1021,7 +1021,7 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
               <button
                 onClick={handleSelectNextRound}
                 disabled={isSelectingNextRound}
-                className="px-4 py-2 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                className="px-4 py-2 text-sm font-medium text-white bg-[#B70D23] hover:bg-[#8B0A1A] rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 {isSelectingNextRound ? (
                   <>
@@ -1064,7 +1064,7 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
               <button
                 onClick={handleSubmitAttendance}
                 disabled={isSubmitting}
-                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-2 px-4 py-2 bg-[#B70D23] hover:bg-[#8B0A1A] text-white rounded-lg text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isSubmitting ? (
                   <>

@@ -6,12 +6,12 @@ import { AlertCircle, CheckCircle, MessageSquare, User, Clock } from "lucide-rea
 import { Spinner, StatusMessage } from "./ui";
 
 const stageColors = {
-  "Aptitude Test": "bg-blue-100 text-blue-800 border-blue-300",
-  "Group Discussion": "bg-purple-100 text-purple-800 border-purple-300",
-  "Technical Interview": "bg-green-100 text-green-800 border-green-300",
-  "HR Interview": "bg-orange-100 text-orange-800 border-orange-300",
-  Result: "bg-red-100 text-red-800 border-red-300",
-  "General Update": "bg-slate-100 text-slate-800 border-slate-300",
+  "Aptitude Test": "bg-[#FFE5E5] text-[#B70D23] border-[#D9394A]",
+  "Group Discussion": "bg-[#FFE5E5] text-[#B70D23] border-[#D9394A]",
+  "Technical Interview": "bg-[#FFE5E5] text-[#B70D23] border-[#D9394A]",
+  "HR Interview": "bg-[#FFE5E5] text-[#B70D23] border-[#D9394A]",
+  Result: "bg-[#FFE5E5] text-[#B70D23] border-[#D9394A]",
+  "General Update": "bg-[#FFE5E5] text-[#B70D23] border-[#D9394A]",
 };
 
 const stageOrder = [
@@ -207,17 +207,17 @@ const stageOrder = [
       </div>
 
       {isFacultyOrAdmin && (
-        <div className="rounded-lg border border-red-200 bg-gradient-to-br from-red-50 to-red-100/50 p-5">
-          <h3 className="text-sm font-semibold text-indigo-900 mb-4">Post Update</h3>
+        <div className="rounded-lg border border-[#B70D23]/20 bg-gradient-to-br from-[#FFE5E5] to-[#FFE5E5]/50 p-5">
+          <h3 className="text-sm font-semibold text-[#B70D23] mb-4">Post Update</h3>
           <div className="space-y-3">
             <div>
-              <label className="block text-xs font-medium text-indigo-800 mb-1.5">
+              <label className="block text-xs font-medium text-[#B70D23] mb-1.5">
                 Stage
               </label>
               <select
                 value={selectedStage}
                 onChange={(e) => setSelectedStage(e.target.value)}
-                className="w-full rounded-lg border border-red-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                className="w-full rounded-lg border border-[#B70D23] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#B70D23]"
               >
                 <option value="">Select a stage...</option>
                 {[
@@ -236,7 +236,7 @@ const stageOrder = [
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-indigo-800 mb-1.5">
+              <label className="block text-xs font-medium text-[#B70D23] mb-1.5">
                 Comment
               </label>
               <textarea
@@ -244,20 +244,20 @@ const stageOrder = [
                 onChange={(e) => setNewComment(e.target.value)}
                 placeholder="Add your update here..."
                 rows="3"
-                className="w-full rounded-lg border border-red-300 bg-white px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-red-500"
+                className="w-full rounded-lg border border-[#B70D23] bg-white px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#B70D23]"
               />
             </div>
 
             {selectedStage && selectedStage !== "General Update" && (
-              <div className="flex items-center gap-2 rounded-lg bg-white/50 p-3 border border-indigo-200">
+              <div className="flex items-center gap-2 rounded-lg bg-white/50 p-3 border border-[#B70D23]/20">
                 <input
                   type="checkbox"
                   id="activateStage"
                   checked={activateStage}
                   onChange={(e) => setActivateStage(e.target.checked)}
-                  className="rounded border-red-300 text-red-600 focus:ring-red-500"
+                  className="rounded border-[#B70D23] text-[#B70D23] focus:ring-[#B70D23]"
                 />
-                <label htmlFor="activateStage" className="text-xs font-medium text-indigo-800 cursor-pointer">
+                <label htmlFor="activateStage" className="text-xs font-medium text-[#B70D23] cursor-pointer">
                   Enable this stage in Attendance
                 </label>
               </div>
@@ -266,7 +266,7 @@ const stageOrder = [
             <button
               onClick={handlePostUpdate}
               disabled={isPosting}
-              className="w-full rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700 disabled:bg-red-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="w-full rounded-lg bg-[#B70D23] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#8B0A1A] disabled:bg-[#D9394A] disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {isPosting ? (
                 <>
