@@ -1,6 +1,12 @@
 import { useState, useEffect, forwardRef, useImperativeHandle } from "react";
-import { BookOpen, Code, Award, Briefcase, Link as LinkIcon, FileText, X, Plus, ChevronDown, ChevronUp, AlertCircle, CheckCircle, Loader } from "lucide-react";
-import api, { extractApiData, extractApiError, getAccessToken, getApiUrl } from "../api";
+import { BookOpen, Code, Award, Briefcase, Link as LinkIcon, FileText, Image as ImageIcon, X, Plus, ChevronDown, ChevronUp, AlertCircle, CheckCircle, Loader } from "lucide-react";
+import api, {
+  extractApiData,
+  extractApiError,
+  getAccessToken,
+  getApiUrl,
+  uploadStudentPhoto,
+} from "../api";
 import { PrimaryButton, StatusMessage } from "./ui";
 import SKILLS_BY_DEPARTMENT from "../constants/skillsByDepartment";
 import { useAuth } from "../context/AuthContext";
@@ -50,6 +56,11 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
       uploadedAt: "",
     },
     resumeFile: null,
+    studentPhoto: {
+      data: "",
+      contentType: "",
+      fileName: "",
+    },
   });
 
   const [validationErrors, setValidationErrors] = useState({});
@@ -86,6 +97,11 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
             resume: {
               resumeUrl: profile.resume?.resumeUrl || "",
               uploadedAt: profile.resume?.uploadedAt || "",
+            },
+            studentPhoto: {
+              data: profile.studentPhoto?.data || "",
+              contentType: profile.studentPhoto?.contentType || "",
+              fileName: profile.studentPhoto?.fileName || "",
             },
           }));
         }
@@ -413,6 +429,69 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
     } finally {
       setSavingSection(null);
     }
+    e.target.value = "";
+  };
+
+  const uploadProfilePhoto = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const allowed = ["image/jpeg", "image/png", "image/jpg"];
+    if (!allowed.includes(file.type)) {
+      setErrorMsg("Only JPG or PNG images are allowed");
+      e.target.value = "";
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      setErrorMsg("Image must be under 2MB");
+      e.target.value = "";
+      return;
+    }
+
+    setSavingSection(7);
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const result = reader.result;
+        if (typeof result !== "string") {
+          setErrorMsg("Could not read the selected file");
+          return;
+        }
+        const comma = result.indexOf(",");
+        const base64Payload = comma >= 0 ? result.slice(comma + 1) : result;
+        const contentType =
+          file.type === "image/jpg" || file.type === "" ? "image/jpeg" : file.type;
+
+        const response = await uploadStudentPhoto({
+          data: base64Payload,
+          contentType,
+          fileName: file.name,
+        });
+        const data = extractApiData(response);
+        const sp = data?.studentPhoto;
+        setFormData((prev) => ({
+          ...prev,
+          studentPhoto: {
+            data: sp?.data || base64Payload,
+            contentType: sp?.contentType || contentType,
+            fileName: sp?.fileName || file.name,
+          },
+        }));
+        setSuccessMsg("Profile photo updated");
+        onFormChange && onFormChange();
+      } catch (error) {
+        setErrorMsg(extractApiError(error, "Failed to upload profile photo"));
+      } finally {
+        setSavingSection(null);
+      }
+    };
+    reader.onerror = () => {
+      setErrorMsg("Could not read the selected file");
+      setSavingSection(null);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
   };
 
   const saveProfessionalLinks = async () => {
@@ -1070,6 +1149,52 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
                     </a>
                   </div>
                 )}
+              </div>
+            </div>
+
+            {/* Profile Photo Upload */}
+            <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4">
+              <h3 className="font-semibold text-indigo-900 mb-4">Profile Photo Upload</h3>
+              <div className="space-y-4">
+                <label className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-indigo-300 p-6 hover:bg-indigo-100 cursor-pointer transition-colors">
+                  <ImageIcon size={40} className="mb-2 text-indigo-600" />
+                  <span className="text-sm font-medium text-indigo-900 text-center px-2">
+                    {formData.studentPhoto?.fileName ? "Replace profile photo" : "Upload profile photo"} (JPG or PNG, max 2MB)
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,.jpg,.jpeg,.png"
+                    onChange={uploadProfilePhoto}
+                    disabled={savingSection === 7}
+                    className="hidden"
+                  />
+                </label>
+                {savingSection === 7 && (
+                  <p className="text-sm text-indigo-800 text-center">Uploading…</p>
+                )}
+                {(() => {
+                  const photoSrc =
+                    formData.studentPhoto?.data && formData.studentPhoto?.contentType
+                      ? `data:${formData.studentPhoto.contentType};base64,${formData.studentPhoto.data}`
+                      : "";
+                  return photoSrc ? (
+                    <div className="rounded-lg border border-indigo-200 bg-white p-4 space-y-3">
+                      <div className="flex justify-center">
+                        <img
+                          src={photoSrc}
+                          alt="Profile preview"
+                          className="max-h-48 max-w-full rounded-lg object-contain border border-slate-200"
+                        />
+                      </div>
+                      <p className="text-xs text-slate-600 text-center break-all">
+                        <span className="font-medium text-slate-800">File: </span>
+                        {formData.studentPhoto.fileName || "photo"}
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-slate-600 text-center">No profile photo uploaded yet.</p>
+                  );
+                })()}
               </div>
             </div>
           </div>

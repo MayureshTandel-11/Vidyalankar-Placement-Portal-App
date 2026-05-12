@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import api, { extractApiData } from "../api";
+import api, { extractApiData, downloadStudentPhoto } from "../api";
 import { useAuth } from "../context/AuthContext";
-import { Search, Filter, Download, Eye, BarChart3 } from "lucide-react";
+import { Search, Filter, Download, BarChart3, Image as ImageIcon, FileText } from "lucide-react";
 import { Spinner } from "./ui";
 import { generateStudentProfilePDF } from "../utils/pdfGenerator";
 
@@ -26,6 +26,7 @@ const StudentManagement = () => {
   const [showAnalyticsModal, setShowAnalyticsModal] = useState(false);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [isDownloadingResume, setIsDownloadingResume] = useState(false);
+  const [downloadingPhotoStudentId, setDownloadingPhotoStudentId] = useState(null);
 
   const ITEMS_PER_PAGE = 20;
 
@@ -221,6 +222,65 @@ const StudentManagement = () => {
       });
     } finally {
       setIsDownloadingResume(false);
+    }
+  };
+
+  const handleDownloadPhoto = async (studentId, studentName) => {
+    if (!studentId || studentId === "null" || String(studentId).trim() === "") {
+      setError("Invalid student ID for photo download");
+      return;
+    }
+
+    setDownloadingPhotoStudentId(studentId);
+    setError("");
+
+    try {
+      const response = await downloadStudentPhoto(studentId);
+
+      if (!response?.data) {
+        throw new Error("Empty response from server");
+      }
+
+      const blob = response.data;
+      if (blob.type && blob.type.includes("application/json")) {
+        const text = await blob.text();
+        let msg = "Photo could not be downloaded";
+        try {
+          const j = JSON.parse(text);
+          msg = j?.error?.message || j?.message || msg;
+        } catch {
+          /* ignore */
+        }
+        throw new Error(msg);
+      }
+
+      if (blob.size === 0) {
+        throw new Error("Photo file is empty");
+      }
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      const extGuess = response.headers["content-disposition"]?.match(/\.[a-z0-9]+"?$/i);
+      const ext = extGuess ? extGuess[0].replace(/"/g, "") : ".jpg";
+      const safeName = (studentName || "photo").replace(/\s+/g, "_");
+      link.download = `${safeName}_${studentId}${ext}`;
+
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      const message =
+        err.response?.data?.message || err.message || "Failed to download profile photo";
+      setError(message);
+      console.error("[STUDENT MGMT] Photo download error:", {
+        studentId,
+        message,
+        status: err.response?.status,
+      });
+    } finally {
+      setDownloadingPhotoStudentId(null);
     }
   };
 
@@ -442,6 +502,7 @@ const StudentManagement = () => {
                   <th className="px-4 py-3 text-left font-semibold text-slate-900">PRN</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-900">Year</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-900">CGPA</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-900 max-w-[140px]">Photo</th>
                   <th className="px-4 py-3 text-center font-semibold text-slate-900">Actions</th>
                 </tr>
               </thead>
@@ -455,12 +516,24 @@ const StudentManagement = () => {
                     <td className="px-4 py-3 text-slate-600">
                       {student.academicInfo?.cgpa || "N/A"}
                     </td>
+                    <td className="px-4 py-3 text-slate-600 max-w-[140px]">
+                      <div className="truncate text-xs" title={student.studentPhoto?.fileName || undefined}>
+                        {student.studentPhoto?.fileName ? (
+                          <span title={`${student.studentPhoto.fileName} (${student.studentPhoto.contentType || ""})`}>
+                            {student.studentPhoto.fileName}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-4 py-3 text-center">
-                      <div className="flex gap-2 justify-center">
+                      <div className="flex gap-2 justify-center flex-wrap">
                         <button
                           onClick={() => handleViewAnalytics(student)}
-                          className="p-1.5 hover:bg-purple-100 rounded transition text-purple-600 title='View Analytics'"
+                          className="p-1.5 hover:bg-purple-100 rounded transition text-purple-600"
                           title="View Analytics"
+                          type="button"
                         >
                           <BarChart3 size={16} />
                         </button>
@@ -469,6 +542,7 @@ const StudentManagement = () => {
                           disabled={isGeneratingPDF}
                           className="p-1.5 hover:bg-green-100 rounded transition text-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
                           title="Download PDF"
+                          type="button"
                         >
                           <Download size={16} />
                         </button>
@@ -477,8 +551,25 @@ const StudentManagement = () => {
                           disabled={isDownloadingResume}
                           className="p-1.5 hover:bg-blue-100 rounded transition text-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
                           title="Download Resume"
+                          type="button"
                         >
-                          <Download size={16} />
+                          <FileText size={16} />
+                        </button>
+                        <button
+                          onClick={() => handleDownloadPhoto(student.studentId, student.fullName || student.name)}
+                          disabled={
+                            downloadingPhotoStudentId === student.studentId ||
+                            !student.studentPhoto?.fileName
+                          }
+                          className="p-1.5 hover:bg-indigo-100 rounded transition text-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                          title={
+                            student.studentPhoto?.fileName
+                              ? "Download profile photo"
+                              : "No profile photo uploaded"
+                          }
+                          type="button"
+                        >
+                          <ImageIcon size={16} />
                         </button>
                       </div>
                     </td>

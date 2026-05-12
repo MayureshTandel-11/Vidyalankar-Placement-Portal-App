@@ -5,6 +5,24 @@ const { ok, fail } = require("../utils/apiResponse");
 const { sanitizeUserResponse, sanitizeString } = require("../utils/sanitize");
 const { ALLOWED_EXT, MIME_FOR_EXT } = require("../middleware/uploadMiddleware");
 
+const MAX_STUDENT_PHOTO_BYTES = 2 * 1024 * 1024;
+const ALLOWED_PHOTO_MIME = new Set(["image/jpeg", "image/png"]);
+
+const normalizePhotoContentType = (raw) => {
+  const s = String(raw || "").trim().toLowerCase();
+  if (s === "image/jpg") return "image/jpeg";
+  return s;
+};
+
+const stripBase64Payload = (raw) => {
+  const s = String(raw || "").trim();
+  const dataUrl = s.match(/^data:image\/[a-z0-9+.-]+;base64,(.+)$/i);
+  if (dataUrl) return dataUrl[1].replace(/\s/g, "");
+  return s.replace(/\s/g, "");
+};
+
+const photoExtensionFromMime = (mime) => (mime === "image/png" ? ".png" : ".jpg");
+
 // Validation helper functions
 const validateEmail = (email) => {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -54,6 +72,11 @@ const getStudentProfile = async (req, res) => {
         mimeType: "",
         resumeUrl: "",
         uploadedAt: null,
+      },
+      studentPhoto: profile.studentPhoto || {
+        data: "",
+        contentType: "",
+        fileName: "",
       },
     };
 
@@ -562,8 +585,128 @@ const updateStudentId = async (req, res) => {
   }
 };
 
+// PUT /api/student/upload-photo — student uploads profile photo (base64 body)
+const uploadStudentPhoto = async (req, res) => {
+  try {
+    if (req.user.role !== "student") {
+      return fail(res, 403, "Only students can upload a profile photo");
+    }
+
+    const { data, contentType, fileName } = req.body || {};
+    const payload = stripBase64Payload(data);
+
+    if (!payload) {
+      return fail(res, 400, "Image data is required");
+    }
+
+    const normalizedMime = normalizePhotoContentType(contentType);
+    if (!normalizedMime || !ALLOWED_PHOTO_MIME.has(normalizedMime)) {
+      return fail(res, 400, "Only JPG, JPEG, or PNG images are allowed");
+    }
+
+    const safeName = sanitizeString(fileName || "");
+    const lowerName = safeName.toLowerCase();
+    const extOk =
+      lowerName.endsWith(".jpg") ||
+      lowerName.endsWith(".jpeg") ||
+      lowerName.endsWith(".png");
+    if (!safeName || !extOk) {
+      return fail(res, 400, "Filename must end with .jpg, .jpeg, or .png");
+    }
+
+    let buffer;
+    try {
+      buffer = Buffer.from(payload, "base64");
+    } catch {
+      return fail(res, 400, "Invalid base64 image data");
+    }
+
+    if (!buffer.length) {
+      return fail(res, 400, "Invalid image data");
+    }
+
+    if (buffer.length > MAX_STUDENT_PHOTO_BYTES) {
+      return fail(res, 400, "Image file size must be less than 2MB");
+    }
+
+    const student = await User.findByIdAndUpdate(
+      req.user._id,
+      {
+        studentPhoto: {
+          data: payload,
+          contentType: sanitizeString(normalizedMime),
+          fileName: safeName,
+        },
+      },
+      { returnDocument: "after", runValidators: true }
+    );
+
+    if (!student) {
+      return fail(res, 404, "Student not found");
+    }
+
+    return ok(res, {
+      studentPhoto: student.studentPhoto,
+    });
+  } catch (error) {
+    return fail(res, 500, "Error uploading profile photo", error.message);
+  }
+};
+
+const downloadStudentPhoto = async (req, res) => {
+  try {
+    const { studentId } = req.params;
+
+    if (!studentId || studentId === "null") {
+      return fail(res, 400, "Invalid student ID");
+    }
+
+    const student = await User.findOne({ studentId }).lean();
+    if (!student) {
+      return fail(res, 404, "Student not found");
+    }
+
+    if (req.user.role === "faculty") {
+      const a = String(student.department || "").trim().toLowerCase();
+      const b = String(req.user.department || "").trim().toLowerCase();
+      if (!a || !b || a !== b) {
+        return fail(res, 403, "You can only download photos for students in your department");
+      }
+    }
+
+    const raw = student.studentPhoto?.data;
+    if (!raw || !String(raw).trim()) {
+      return fail(res, 404, "No profile photo uploaded for this student");
+    }
+
+    let buffer;
+    try {
+      buffer = Buffer.from(stripBase64Payload(raw), "base64");
+    } catch {
+      return fail(res, 500, "Stored photo data is invalid");
+    }
+
+    if (!buffer.length) {
+      return fail(res, 404, "No profile photo uploaded for this student");
+    }
+
+    const mime = normalizePhotoContentType(student.studentPhoto?.contentType) || "image/jpeg";
+    const baseLabel =
+      (student.studentPhoto?.fileName && path.basename(student.studentPhoto.fileName)) ||
+      `${student.fullName || student.name || "photo"}_${studentId}${photoExtensionFromMime(mime)}`;
+
+    res.setHeader("Content-Type", mime);
+    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(baseLabel)}"`);
+
+    return res.send(buffer);
+  } catch (error) {
+    console.error("[DOWNLOAD STUDENT PHOTO ERROR]", error);
+    return fail(res, 500, "Error downloading profile photo", error.message);
+  }
+};
+
 // Download Resume
-// GET /api/student/profile/resume/download/:studentId
+// GET /api/student/resume/download/:studentId
 // Faculty can download only from their department
 // Admin can download any student's resume
 const downloadResume = async (req, res) => {
@@ -641,7 +784,9 @@ module.exports = {
   updateProject,
   deleteProject,
   uploadResume,
+  uploadStudentPhoto,
   updateProfessionalLinks,
   updateStudentId,
   downloadResume,
+  downloadStudentPhoto,
 };

@@ -46,7 +46,9 @@ const getAllStudents = async (req, res) => {
 
     // Fetch students sorted by fullName
     const students = await User.find(query)
-      .select("name fullName email studentId department year phone academicInfo.cgpa")
+      .select(
+        "name fullName email studentId department year phone academicInfo.cgpa studentPhoto.fileName studentPhoto.contentType"
+      )
       .sort({ fullName: 1 })
       .skip(skip)
       .limit(Number(limit))
@@ -77,7 +79,7 @@ const getStudentDetails = async (req, res) => {
   try {
     const { studentId } = req.params;
 
-    const student = await User.findOne({ studentId }).select("-password").lean();
+    const student = await User.findOne({ studentId }).select("-password -studentPhoto.data").lean();
     if (!student) {
       return res.status(404).json({ message: "Student not found" });
     }

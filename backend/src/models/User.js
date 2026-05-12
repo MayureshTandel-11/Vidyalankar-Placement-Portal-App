@@ -124,6 +124,12 @@ const userSchema = new mongoose.Schema(
       uploadedAt: { type: Date },
       _id: false,
     },
+    studentPhoto: {
+      data: { type: String },
+      contentType: { type: String, trim: true },
+      fileName: { type: String, trim: true },
+      _id: false,
+    },
     professionalLinks: {
       linkedinProfile: {
         type: String,

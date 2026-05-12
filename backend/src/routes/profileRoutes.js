@@ -10,9 +10,11 @@ const {
   updateProject,
   deleteProject,
   uploadResume,
+  uploadStudentPhoto,
   updateProfessionalLinks,
   updateStudentId,
   downloadResume,
+  downloadStudentPhoto,
 } = require("../controllers/profileController");
 const { protect } = require("../middleware/authMiddleware");
 const { allowRoles } = require("../middleware/roleMiddleware");
@@ -105,6 +107,9 @@ router.post(
   uploadResume
 );
 
+// PUT /api/student/upload-photo — Profile photo (JSON base64)
+router.put("/upload-photo", protect, allowRoles("student"), uploadStudentPhoto);
+
 // POST /api/student/professional-links - Update professional links
 router.post(
   "/professional-links",
@@ -129,6 +134,14 @@ router.get(
   protect,
   allowRoles("faculty", "admin"),
   downloadResume
+);
+
+// GET /api/student/download-photo/:studentId — Download student profile photo
+router.get(
+  "/download-photo/:studentId",
+  protect,
+  allowRoles("faculty", "admin"),
+  downloadStudentPhoto
 );
 
 // Legacy path (some clients called /profile/resume/download/...)

@@ -20,7 +20,9 @@ export {
   extractApiError,
   getAccessToken,
   getApiUrl,
-  getSocketUrl
+  getSocketUrl,
+  uploadStudentPhoto,
+  downloadStudentPhoto,
 } from "./utils/apiClient";
 
 // Re-export the default api instance

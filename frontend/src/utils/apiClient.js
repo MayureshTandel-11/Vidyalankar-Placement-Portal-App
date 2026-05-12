@@ -267,4 +267,15 @@ export const getApiUrl = () => API_URL;
  */
 export const getSocketUrl = () => SOCKET_URL;
 
+/** Student profile photo: JSON body with base64 `data`, `contentType`, `fileName` */
+export const uploadStudentPhoto = (body) =>
+  api.put("/student/upload-photo", body, { timeout: 60000 });
+
+/** Faculty/Admin: binary download */
+export const downloadStudentPhoto = (studentId) =>
+  api.get(`/student/download-photo/${encodeURIComponent(String(studentId).trim())}`, {
+    responseType: "blob",
+    timeout: 60000,
+  });
+
 export default api;
