@@ -1,6 +1,15 @@
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 
+:root {
+  --color-crimson: #b70d23;
+  --color-crimson-hover: #8b0a1a;
+  --color-crimson-light: #f87171;
+  --color-crimson-dark: #7f1d1d;
+  --color-indigo: #6366f1;
+  --color-electric: #4f46e5;
+}
+
 html,
 body,
 #root {
@@ -25,7 +34,8 @@ body {
 }
 
 *::selection {
-  background: rgba(99, 102, 241, 0.2);
+  background: rgba(183, 13, 35, 0.15);
+  color: #b70d23;
 }
 
 .glass-panel {
@@ -52,14 +62,14 @@ body {
 }
 
 .input-modern:hover {
-  border-color: rgba(99, 102, 241, 0.35);
+  border-color: rgba(183, 13, 35, 0.35);
 }
 
 .input-modern:focus {
   transform: translateY(-1px);
-  border-color: #6366f1;
+  border-color: #b70d23;
   background: #ffffff;
-  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.17);
+  box-shadow: 0 0 0 4px rgba(183, 13, 35, 0.12);
 }
 
 .label-modern {
@@ -79,7 +89,7 @@ body {
 
 .modal-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: rgba(99, 102, 241, 0.45) transparent;
+  scrollbar-color: rgba(183, 13, 35, 0.45) transparent;
 }
 
 .modal-scrollbar::-webkit-scrollbar {
@@ -88,7 +98,33 @@ body {
 
 .modal-scrollbar::-webkit-scrollbar-thumb {
   border-radius: 9999px;
-  background: linear-gradient(180deg, rgba(99, 102, 241, 0.6), rgba(14, 165, 233, 0.6));
+  background: linear-gradient(180deg, rgba(183, 13, 35, 0.6), rgba(248, 113, 113, 0.6));
+}
+
+/* Crimson accent utilities */
+.accent-crimson {
+  color: #b70d23;
+}
+
+.bg-accent-crimson {
+  background-color: #b70d23;
+}
+
+.border-accent-crimson {
+  border-color: #b70d23;
+}
+
+.hover\\:border-crimson:hover {
+  border-color: #b70d23;
+}
+
+.hover\\:bg-crimson:hover {
+  background-color: #8b0a1a;
+}
+
+.focus\\:border-crimson:focus {
+  border-color: #b70d23;
+  box-shadow: 0 0 0 4px rgba(183, 13, 35, 0.12);
 }
 
 /* Responsive Typography */

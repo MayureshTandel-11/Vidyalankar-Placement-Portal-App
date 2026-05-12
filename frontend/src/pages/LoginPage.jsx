@@ -79,7 +79,7 @@ const LoginPage = () => {
       >
         <div className="mb-1 flex flex-col items-start gap-2">
           <div className="w-full">
-            <div className="mb-1.5 inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50 px-2 xs:px-2.5 py-0.5 xs:py-1 text-xs font-medium text-indigo-700">
+            <div className="mb-1.5 inline-flex items-center gap-2 rounded-full border border-red-100 bg-red-50 px-2 xs:px-2.5 py-0.5 xs:py-1 text-xs font-medium text-red-700">
               <ShieldCheck size={12} className="xs:size-3.5" />
               Secure access
             </div>
@@ -119,8 +119,8 @@ const LoginPage = () => {
         <StatusMessage type="error" message={error} className="text-xs xs:text-sm" />
         <PrimaryButton loading={loading} disabled={loading} className="w-full rounded-lg xs:rounded-xl py-2.5 xs:py-3 text-xs xs:text-sm">{loading ? "Logging In..." : "Login"}</PrimaryButton>
         <div className="flex flex-col xs:flex-row items-start xs:items-center justify-between gap-2 border-t border-slate-200 pt-2">
-          <Link className="flex items-center gap-1 text-xs xs:text-sm text-indigo-600 transition-colors duration-200 ease-in-out hover:text-indigo-500" to="/register"><UserCog size={13} className="xs:size-3.5" />New student? Register</Link>
-          <Link className="text-xs xs:text-sm text-indigo-600 hover:text-indigo-700" to="/forgot-password">Forgot password?</Link>
+          <Link className="flex items-center gap-1 text-xs xs:text-sm text-red-600 transition-colors duration-200 ease-in-out hover:text-red-500" to="/register"><UserCog size={13} className="xs:size-3.5" />New student? Register</Link>
+          <Link className="text-xs xs:text-sm text-red-600 hover:text-red-700" to="/forgot-password">Forgot password?</Link>
         </div>
       </Motion.form>
       </div>

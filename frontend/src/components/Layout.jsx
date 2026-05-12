@@ -28,7 +28,7 @@ const Layout = ({ children, role = "Student" }) => {
             <button
               type="button"
               aria-label="Open mobile menu"
-              className="h-9 w-9 flex items-center justify-center rounded-md border border-slate-200 bg-white/85 text-slate-700 transition hover:border-indigo-300 hover:text-indigo-600 md:hidden flex-shrink-0"
+              className="h-9 w-9 flex items-center justify-center rounded-md border border-slate-200 bg-white/85 text-slate-700 transition hover:border-red-300 hover:text-red-600 md:hidden flex-shrink-0"
               onClick={() => setShowMenu(true)}
             >
               <Menu size={18} />
@@ -42,7 +42,7 @@ const Layout = ({ children, role = "Student" }) => {
           <div className="relative flex items-center gap-2 flex-shrink-0">
             {/* <button
               onClick={() => setShowNotifications((current) => !current)}
-              className="h-9 w-9 flex items-center justify-center relative rounded-md border border-slate-200 bg-white/85 text-slate-700 transition hover:border-indigo-300 hover:text-indigo-600 flex-shrink-0"
+              className="h-9 w-9 flex items-center justify-center relative rounded-md border border-slate-200 bg-white/85 text-slate-700 transition hover:border-red-300 hover:text-red-600 flex-shrink-0"
               aria-label="Toggle notifications"
             >
               <Bell size={18} />
@@ -50,7 +50,7 @@ const Layout = ({ children, role = "Student" }) => {
             </button> */}
             <button
               onClick={() => setShowProfile((current) => !current)}
-              className="h-9 px-2 flex items-center gap-1.5 rounded-md border border-slate-200 bg-white/85 text-slate-700 transition hover:border-indigo-300 hover:text-indigo-600 flex-shrink-0"
+              className="h-9 px-2 flex items-center gap-1.5 rounded-md border border-slate-200 bg-white/85 text-slate-700 transition hover:border-red-300 hover:text-red-600 flex-shrink-0"
               aria-label="Toggle user profile menu"
             >
               <UserCircle2 size={18} className="flex-shrink-0" />
@@ -103,7 +103,7 @@ const Layout = ({ children, role = "Student" }) => {
                       <X size={16} />
                     </button>
                   </div>
-                  <div className="bg-gradient-to-br from-indigo-50 to-indigo-100/50 p-3 rounded-lg border border-indigo-200/50">
+                  <div className="bg-gradient-to-br from-red-50 to-red-100/50 p-3 rounded-lg border border-red-200/50">
                     <p className="text-xs text-indigo-700">👤 <span className="font-medium">{user?.name || "User"}</span></p>
                   </div>
                   <PrimaryButton onClick={handleLogout} className="w-full text-xs sm:text-sm py-2">

@@ -184,7 +184,7 @@ const stageOrder = [
             <div key={stage} className="flex items-center flex-1">
               <div
                 className={`h-3 flex-1 rounded-full transition-colors ${
-                  localActiveStages.includes(stage) ? "bg-indigo-600" : "bg-slate-200"
+                  localActiveStages.includes(stage) ? "bg-red-600" : "bg-slate-200"
                 }`}
               />
               {idx < stageOrder.length - 1 && (
@@ -207,7 +207,7 @@ const stageOrder = [
       </div>
 
       {isFacultyOrAdmin && (
-        <div className="rounded-lg border border-indigo-200 bg-gradient-to-br from-indigo-50 to-indigo-100/50 p-5">
+        <div className="rounded-lg border border-red-200 bg-gradient-to-br from-red-50 to-red-100/50 p-5">
           <h3 className="text-sm font-semibold text-indigo-900 mb-4">Post Update</h3>
           <div className="space-y-3">
             <div>
@@ -217,7 +217,7 @@ const stageOrder = [
               <select
                 value={selectedStage}
                 onChange={(e) => setSelectedStage(e.target.value)}
-                className="w-full rounded-lg border border-indigo-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full rounded-lg border border-red-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
               >
                 <option value="">Select a stage...</option>
                 {[
@@ -244,7 +244,7 @@ const stageOrder = [
                 onChange={(e) => setNewComment(e.target.value)}
                 placeholder="Add your update here..."
                 rows="3"
-                className="w-full rounded-lg border border-indigo-300 bg-white px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full rounded-lg border border-red-300 bg-white px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-red-500"
               />
             </div>
 
@@ -255,7 +255,7 @@ const stageOrder = [
                   id="activateStage"
                   checked={activateStage}
                   onChange={(e) => setActivateStage(e.target.checked)}
-                  className="rounded border-indigo-300 text-indigo-600 focus:ring-indigo-500"
+                  className="rounded border-red-300 text-red-600 focus:ring-red-500"
                 />
                 <label htmlFor="activateStage" className="text-xs font-medium text-indigo-800 cursor-pointer">
                   Enable this stage in Attendance
@@ -266,7 +266,7 @@ const stageOrder = [
             <button
               onClick={handlePostUpdate}
               disabled={isPosting}
-              className="w-full rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:bg-indigo-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="w-full rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700 disabled:bg-red-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {isPosting ? (
                 <>

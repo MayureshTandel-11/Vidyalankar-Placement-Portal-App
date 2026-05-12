@@ -115,7 +115,7 @@ const ForgotPasswordPage = () => {
             Reset Password
           </PrimaryButton>
         )}
-        <Link to="/login" className="text-xs xs:text-sm text-indigo-600 transition-colors duration-200 ease-in-out hover:text-indigo-500">
+        <Link to="/login" className="text-xs xs:text-sm text-red-600 transition-colors duration-200 ease-in-out hover:text-red-500">
           Back to login
         </Link>
       </div>

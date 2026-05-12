@@ -136,8 +136,8 @@ const AnalyticsPage = () => {
                 onClick={() => setYearFilter(yearFilter === y ? "" : y)}
                 className={`rounded-full px-4 py-2 text-xs font-medium border transition ${
                   yearFilter === y
-                    ? "bg-indigo-600 text-white border-indigo-600"
-                    : "bg-white text-slate-700 border-slate-200 hover:border-indigo-300"
+                    ? "bg-red-600 text-white border-red-600"
+                    : "bg-white text-slate-700 border-slate-200 hover:border-red-300"
                 }`}
               >
                 {y}
@@ -188,7 +188,7 @@ const AnalyticsPage = () => {
               placeholder="Search by student name..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full max-w-lg px-4 py-2.5 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white/90"
+              className="w-full max-w-lg px-4 py-2.5 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-white/90"
             />
 
             {!classLoading && filteredForSearch.length === 0 ? (
@@ -200,8 +200,8 @@ const AnalyticsPage = () => {
                     key={s.studentId}
                     type="button"
                     onClick={() => setSelectedStudentId(s.studentId)}
-                    className={`text-left glass-panel p-4 rounded-xl border transition hover:border-indigo-300 hover:shadow-md ${
-                      selectedStudentId === s.studentId ? "border-indigo-500 ring-2 ring-indigo-100" : "border-slate-200/80"
+                    className={`text-left glass-panel p-4 rounded-xl border transition hover:border-red-300 hover:shadow-md ${
+                      selectedStudentId === s.studentId ? "border-red-500 ring-2 ring-red-100" : "border-slate-200/80"
                     }`}
                   >
                     <p className="font-semibold text-slate-900">{s.name}</p>

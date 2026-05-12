@@ -80,7 +80,7 @@ const SearchableStudentSelect = ({
           <button
             onClick={handleSelectAll}
             disabled={filteredStudents.length === 0}
-            className="text-xs px-3 py-1.5 bg-indigo-100 text-indigo-700 hover:bg-indigo-200 rounded border border-indigo-300 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            className="text-xs px-3 py-1.5 bg-red-100 text-red-700 hover:bg-red-200 rounded border border-red-300 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Select All Shown
           </button>

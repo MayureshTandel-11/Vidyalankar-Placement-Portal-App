@@ -52,7 +52,7 @@ const Badge = ({ link = "https://www.linkedin.com/in/mayuresh-tandel-1104dev/" }
         href={link}
         target="_blank"
         rel="noopener noreferrer"
-        className="badge-container inline-flex items-center justify-center px-2 xs:px-3 sm:px-4 py-1 xs:py-1.5 sm:py-2 rounded-full bg-gradient-to-r from-indigo-600 via-indigo-500 to-blue-500 hover:from-indigo-500 hover:via-indigo-400 hover:to-blue-400 text-white font-semibold text-xs tracking-widest shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-110 border border-indigo-400/50 hover:border-indigo-300/80 group"
+        className="badge-container inline-flex items-center justify-center px-2 xs:px-3 sm:px-4 py-1 xs:py-1.5 sm:py-2 rounded-full bg-gradient-to-r from-red-600 via-red-500 to-red-400 hover:from-red-500 hover:via-red-400 hover:to-red-300 text-white font-semibold text-xs tracking-widest shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-110 border border-red-400/50 hover:border-red-300/80 group"
         aria-label="Connect on LinkedIn"
       >
         <span className="relative z-10 text-xs xs:text-sm sm:text-base font-bold tracking-wider">MT</span>

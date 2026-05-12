@@ -121,7 +121,7 @@ const Notifications = ({ onUnreadCountChange }) => {
             Notifications
           </h1>
           {unreadCount > 0 && (
-            <p className="text-sm text-indigo-600 mt-1">
+            <p className="text-sm text-red-600 mt-1">
               You have <strong>{unreadCount}</strong> unread notification{unreadCount !== 1 ? "s" : ""}
             </p>
           )}
@@ -129,7 +129,7 @@ const Notifications = ({ onUnreadCountChange }) => {
         {unreadCount > 0 && (
           <button
             onClick={handleMarkAllAsRead}
-            className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition"
+            className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition"
           >
             Mark All as Read
           </button>
@@ -152,7 +152,7 @@ const Notifications = ({ onUnreadCountChange }) => {
           }}
           className={`px-4 py-2 text-sm font-medium rounded-lg transition ${
             filter === "all"
-              ? "bg-indigo-600 text-white"
+              ? "bg-red-600 text-white"
               : "bg-slate-100 text-slate-700 hover:bg-slate-200"
           }`}
         >
@@ -165,7 +165,7 @@ const Notifications = ({ onUnreadCountChange }) => {
           }}
           className={`px-4 py-2 text-sm font-medium rounded-lg transition relative ${
             filter === "unread"
-              ? "bg-indigo-600 text-white"
+              ? "bg-red-600 text-white"
               : "bg-slate-100 text-slate-700 hover:bg-slate-200"
           }`}
         >
@@ -183,7 +183,7 @@ const Notifications = ({ onUnreadCountChange }) => {
           }}
           className={`px-4 py-2 text-sm font-medium rounded-lg transition ${
             filter === "read"
-              ? "bg-indigo-600 text-white"
+              ? "bg-red-600 text-white"
               : "bg-slate-100 text-slate-700 hover:bg-slate-200"
           }`}
         >
@@ -224,7 +224,7 @@ const Notifications = ({ onUnreadCountChange }) => {
                       {notification.opportunityId?.announcementHeading || "Opportunity Update"}
                     </h3>
                     {!notification.isRead && (
-                      <span className="inline-block w-2 h-2 bg-indigo-600 rounded-full flex-shrink-0 mt-1.5" />
+                      <span className="inline-block w-2 h-2 bg-red-600 rounded-full flex-shrink-0 mt-1.5" />
                     )}
                   </div>
 

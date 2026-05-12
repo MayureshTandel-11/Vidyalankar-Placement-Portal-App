@@ -510,7 +510,7 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
                 onClick={() => setViewMode("attendance")}
                 className={`px-3 py-1 text-xs font-medium rounded transition ${
                   viewMode === "attendance"
-                    ? "bg-indigo-600 text-white"
+                    ? "bg-red-600 text-white"
                     : "bg-slate-100 text-slate-700 hover:bg-slate-200"
                 }`}
               >

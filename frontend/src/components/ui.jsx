@@ -5,7 +5,7 @@ import { Loader2, X } from "lucide-react";
 const cn = (...classes) => classes.filter(Boolean).join(" ");
 
 export const Spinner = ({ className = "" }) => (
-  <Loader2 className={cn("h-5 w-5 animate-spin text-indigo-600", className)} aria-hidden="true" />
+  <Loader2 className={cn("h-5 w-5 animate-spin text-red-600", className)} aria-hidden="true" />
 );
 
 export const PrimaryButton = ({ children, className = "", loading = false, disabled = false, ...props }) => (
@@ -14,7 +14,7 @@ export const PrimaryButton = ({ children, className = "", loading = false, disab
     {...props}
     disabled={disabled || loading}
     className={cn(
-      "inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-indigo-600 via-sky-500 to-cyan-500 px-4 py-2.5 font-semibold text-white shadow-[0_14px_30px_-16px_rgba(79,70,229,0.9)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_20px_38px_-18px_rgba(14,165,233,0.9)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70",
+      "inline-flex items-center justify-center gap-2 rounded-2xl bg-red-600 px-4 py-2.5 font-semibold text-white shadow-[0_14px_30px_-16px_rgba(220,38,38,0.9)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-red-700 hover:shadow-[0_20px_38px_-18px_rgba(220,38,38,0.9)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70",
       className
     )}
   >
@@ -25,7 +25,7 @@ export const PrimaryButton = ({ children, className = "", loading = false, disab
 
 export const SectionTitle = ({ title, subtitle, className = "" }) => (
   <div className={cn("space-y-1.5 xs:space-y-2", className)}>
-    <h2 className="text-xl xs:text-2xl sm:text-3xl font-semibold tracking-tight text-transparent bg-gradient-to-r from-indigo-700 via-indigo-600 to-sky-500 bg-clip-text">
+    <h2 className="text-xl xs:text-2xl sm:text-3xl font-semibold tracking-tight text-transparent bg-gradient-to-r from-red-700 via-red-600 to-red-500 bg-clip-text">
       {title}
     </h2>
     {subtitle ? <p className="text-xs xs:text-sm text-slate-600">{subtitle}</p> : null}
@@ -102,7 +102,7 @@ export const Modal = ({
             type="button"
             onClick={onClose}
             aria-label={closeLabel}
-            className="rounded-xl border border-slate-200/90 bg-white/80 p-1.5 xs:p-2 text-slate-600 transition hover:border-indigo-200 hover:text-indigo-600 flex-shrink-0"
+            className="rounded-xl border border-slate-200/90 bg-white/80 p-1.5 xs:p-2 text-slate-600 transition hover:border-red-200 hover:text-red-600 flex-shrink-0"
           >
             <X size={16} />
           </button>

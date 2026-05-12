@@ -207,14 +207,14 @@ const OpportunityCard = ({
         tabIndex={isDisabled ? undefined : 0}
         role={isDisabled ? undefined : "button"}
         aria-disabled={isDisabled}
-        className={`group relative cursor-pointer overflow-hidden rounded-xl sm:rounded-2xl border border-slate-200/80 bg-white/65 shadow-[0_16px_36px_-22px_rgba(15,23,42,0.45)] backdrop-blur-xl transition-all duration-200 hover:shadow-[0_22px_44px_-16px_rgba(99,102,641,0.45)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 ${className}`}
+        className={`group relative cursor-pointer overflow-hidden rounded-xl sm:rounded-2xl border border-slate-200/80 bg-white/65 shadow-[0_16px_36px_-22px_rgba(15,23,42,0.45)] backdrop-blur-xl transition-all duration-200 hover:shadow-[0_22px_44px_-16px_rgba(220,38,38,0.45)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 ${className}`}
       >
-        <div className="h-1.5 w-full bg-gradient-to-r from-indigo-600 via-sky-500 to-cyan-400" />
+        <div className="h-1.5 w-full bg-red-600" />
         <div className="space-y-3 sm:space-y-4 p-3.5 sm:p-5">
           <div className="flex flex-col xs:flex-row items-start gap-2 xs:gap-3 xs:justify-between">
             <h3 className="clamp-2 text-base sm:text-lg font-semibold leading-6 text-slate-800">{opportunity.announcementHeading}</h3>
             <div className="flex flex-wrap items-center gap-1.5 xs:gap-2 flex-shrink-0">
-              <span className="rounded-full border border-indigo-200/80 bg-indigo-50 px-2 xs:px-2.5 py-0.5 xs:py-1 text-xs font-medium text-indigo-700 whitespace-nowrap">
+              <span className="rounded-full border border-red-200/80 bg-red-50 px-2 xs:px-2.5 py-0.5 xs:py-1 text-xs font-medium text-red-700 whitespace-nowrap">
                 {opportunity.type}
               </span>
               <span
@@ -235,7 +235,7 @@ const OpportunityCard = ({
 
           <div className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm text-slate-600">
             <p className="flex items-start gap-2">
-              <GraduationCap size={14} className="mt-0.5 shrink-0 text-indigo-600 sm:size-4" aria-hidden="true" />
+              <GraduationCap size={14} className="mt-0.5 shrink-0 text-red-600 sm:size-4" aria-hidden="true" />
               <span className="min-w-0">
                 <span className="font-semibold text-slate-700">Eligibility:</span> <span className="break-words">{toLabel(opportunity.eligibilityCriteria)}</span>
               </span>
@@ -248,7 +248,7 @@ const OpportunityCard = ({
               </span>
             </p>
             <p className="flex items-start gap-2">
-              <Building2 size={14} className="mt-0.5 shrink-0 text-cyan-600 sm:size-4" aria-hidden="true" />
+              <Building2 size={14} className="mt-0.5 shrink-0 text-red-600 sm:size-4" aria-hidden="true" />
               <span className="min-w-0">
                 <span className="font-semibold text-slate-700">Departments:</span> <span className="break-words">{opportunity.department === OPPORTUNITY_BROADCAST_ALL ? "All Departments" : toLabel(opportunity.department)}</span>
               </span>
@@ -264,9 +264,9 @@ const OpportunityCard = ({
           </div>
 
           {!isStudent && applicantCount !== null && (
-            <div className="flex items-center gap-2 rounded-lg bg-indigo-50/60 px-2.5 sm:px-3 py-1.5 sm:py-2 border border-indigo-200/60">
-              <User size={13} className="text-indigo-600 flex-shrink-0 sm:size-4" />
-              <span className="text-xs sm:text-sm font-medium text-indigo-700">{applicantCount} Applicant{applicantCount !== 1 ? 's' : ''}</span>
+            <div className="flex items-center gap-2 rounded-lg bg-red-50/60 px-2.5 sm:px-3 py-1.5 sm:py-2 border border-red-200/60">
+              <User size={13} className="text-red-600 flex-shrink-0 sm:size-4" />
+              <span className="text-xs sm:text-sm font-medium text-red-700">{applicantCount} Applicant{applicantCount !== 1 ? 's' : ''}</span>
             </div>
           )}
 
@@ -342,7 +342,7 @@ const OpportunityCard = ({
                   onClick={() => setActiveTab(tab)}
                   className={`px-3 sm:px-4 py-3 text-xs sm:text-sm font-medium border-b-2 transition whitespace-nowrap flex-shrink-0 ${
                     activeTab === tab
-                      ? "border-indigo-600 text-indigo-600"
+                      ? "border-red-600 text-red-600"
                       : "border-transparent text-slate-600 hover:text-slate-900"
                   }`}
                 >
@@ -391,14 +391,14 @@ const OpportunityCard = ({
               {/* Info Grid - Responsive */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 {/* Eligibility */}
-                <div className="group rounded-lg sm:rounded-2xl border border-indigo-200/60 bg-gradient-to-br from-indigo-50/60 to-indigo-100/40 p-4 sm:p-5 shadow-sm hover:shadow-md hover:border-indigo-300 transition-all duration-200">
+                <div className="group rounded-lg sm:rounded-2xl border border-red-200/60 bg-gradient-to-br from-red-50/60 to-red-100/40 p-4 sm:p-5 shadow-sm hover:shadow-md hover:border-red-300 transition-all duration-200">
                   <div className="flex items-start gap-2 sm:gap-3">
-                    <div className="rounded-lg bg-indigo-100 p-2 flex-shrink-0">
-                      <GraduationCap size={16} className="text-indigo-600 sm:size-4.5" />
+                    <div className="rounded-lg bg-red-100 p-2 flex-shrink-0">
+                      <GraduationCap size={16} className="text-red-600 sm:size-4.5" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-indigo-900 text-sm sm:text-base">Eligibility</p>
-                      <p className="mt-1.5 sm:mt-2 text-xs sm:text-sm text-indigo-800 leading-5 sm:leading-6 break-words">{toLabel(opportunity.eligibilityCriteria)}</p>
+                      <p className="font-semibold text-red-900 text-sm sm:text-base">Eligibility</p>
+                      <p className="mt-1.5 sm:mt-2 text-xs sm:text-sm text-red-800 leading-5 sm:leading-6 break-words">{toLabel(opportunity.eligibilityCriteria)}</p>
                     </div>
                   </div>
                 </div>
@@ -425,16 +425,16 @@ const OpportunityCard = ({
                 </div>
 
                 {/* Departments - Full Width */}
-                <div className="sm:col-span-2 group rounded-lg sm:rounded-2xl border border-cyan-200/60 bg-gradient-to-br from-cyan-50/60 to-cyan-100/40 p-4 sm:p-5 shadow-sm hover:shadow-md hover:border-cyan-300 transition-all duration-200">
+                <div className="sm:col-span-2 group rounded-lg sm:rounded-2xl border border-red-200/60 bg-gradient-to-br from-red-50/60 to-red-100/40 p-4 sm:p-5 shadow-sm hover:shadow-md hover:border-red-300 transition-all duration-200">
                   <div className="flex items-start gap-2 sm:gap-3">
-                    <div className="rounded-lg bg-cyan-100 p-2 flex-shrink-0">
-                      <Building2 size={16} className="text-cyan-600 sm:size-4.5" />
+                    <div className="rounded-lg bg-red-100 p-2 flex-shrink-0">
+                      <Building2 size={16} className="text-red-600 sm:size-4.5" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-cyan-900 text-sm sm:text-base">Departments</p>
+                      <p className="font-semibold text-red-900 text-sm sm:text-base">Departments</p>
                       <div className="mt-2 sm:mt-3 flex flex-wrap gap-1.5 sm:gap-2">
                         {getDepartmentList(opportunity.department).map((dept, idx) => (
-                          <span key={idx} className="rounded-full px-2 sm:px-3 py-1 sm:py-1.5 bg-cyan-200/60 text-cyan-800 text-xs font-medium border border-cyan-300/50 whitespace-nowrap">
+                          <span key={idx} className="rounded-full px-2 sm:px-3 py-1 sm:py-1.5 bg-red-200/60 text-red-800 text-xs font-medium border border-red-300/50 whitespace-nowrap">
                             {dept}
                           </span>
                         ))}

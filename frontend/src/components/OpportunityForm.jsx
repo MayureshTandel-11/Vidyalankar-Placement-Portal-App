@@ -131,7 +131,7 @@ const OpportunityForm = ({
           <h3 className="text-lg sm:text-xl font-semibold text-slate-800">
             {isEditing ? "Edit Opportunity Details" : "Post New Opportunity"}
           </h3>
-          <span className="rounded-full border border-indigo-200/80 bg-indigo-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-indigo-700 whitespace-nowrap w-fit">
+          <span className="rounded-full border border-red-200/80 bg-red-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-red-700 whitespace-nowrap w-fit">
             Faculty Form
           </span>
         </div>
@@ -191,7 +191,7 @@ const OpportunityForm = ({
                   <button
                     type="button"
                     onClick={toggleAllDepartments}
-                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-slate-700 transition hover:bg-indigo-50"
+                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-slate-700 transition hover:bg-red-50"
                   >
                     <input
                       type="checkbox"
@@ -211,7 +211,7 @@ const OpportunityForm = ({
                       key={option}
                       type="button"
                       onClick={() => toggleDepartment(option)}
-                      className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-slate-700 transition hover:bg-indigo-50"
+                      className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-slate-700 transition hover:bg-red-50"
                     >
                       <input
                         type="checkbox"
@@ -254,7 +254,7 @@ const OpportunityForm = ({
                     key={year}
                     type="button"
                     onClick={() => toggleEligibility(year)}
-                    className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 transition hover:bg-indigo-50"
+                    className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 transition hover:bg-red-50"
                   >
                     <input
                       type="checkbox"
@@ -327,7 +327,7 @@ const OpportunityForm = ({
             <button
               type="button"
               onClick={handleAddCustomSkill}
-              className="rounded-lg bg-indigo-600 px-4 py-2.5 text-white transition hover:bg-indigo-700 active:bg-indigo-800 font-medium text-sm flex-shrink-0"
+              className="rounded-lg bg-red-600 px-4 py-2.5 text-white transition hover:bg-red-700 active:bg-red-800 font-medium text-sm flex-shrink-0"
               aria-label="Add skill"
             >
               <Plus size={18} />

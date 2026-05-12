@@ -189,7 +189,7 @@ const ProfileProgressIndicator = ({ profile }) => {
 // Breadcrumb Navigation Component
 const BreadcrumbNav = () => (
   <nav className="flex items-center gap-2 text-sm">
-    <a href="/" className="text-indigo-600 hover:text-indigo-700">
+    <a href="/" className="text-red-600 hover:text-red-700">
       Home
     </a>
     <span className="text-slate-400">/</span>

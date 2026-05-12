@@ -46,7 +46,7 @@ const Sidebar = ({ role, collapsed, setCollapsed, mobile = false }) => (
         <button
           type="button"
           onClick={() => setCollapsed((v) => !v)}
-          className="rounded-lg border border-indigo-200 bg-white p-1.5 text-indigo-700 transition-all duration-200 ease-in-out hover:bg-indigo-50 flex-shrink-0 ml-auto"
+          className="rounded-lg border border-red-200 bg-white p-1.5 text-red-700 transition-all duration-200 ease-in-out hover:bg-red-50 flex-shrink-0 ml-auto"
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
           {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
@@ -63,7 +63,7 @@ const Sidebar = ({ role, collapsed, setCollapsed, mobile = false }) => (
           className={({ isActive }) =>
             `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 ease-in-out whitespace-nowrap ${
               isActive
-                ? "bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100"
+                ? "bg-red-50 text-red-700 ring-1 ring-red-100"
                 : "text-indigo-900/75 hover:bg-indigo-100/60 hover:text-indigo-900"
             }`
           }

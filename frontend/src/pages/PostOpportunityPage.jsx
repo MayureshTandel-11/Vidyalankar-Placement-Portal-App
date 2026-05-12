@@ -67,14 +67,14 @@ const PostOpportunityPage = () => {
       <SectionTitle title="Post Opportunity" subtitle="Create new opportunities for your department." />
       <StatusMessage message={message} />
       <StatusMessage type="error" message={error} />
-      {/* <OpportunityForm
+      <OpportunityForm
         value={form}
         onChange={setForm}
         onSubmit={submit}
         submitLabel="Create Opportunity"
         showDepartment
         departmentLocked
-        loading={loading} /> */}
+        loading={loading} />
     </Layout><Footer /></>
   );
 };
