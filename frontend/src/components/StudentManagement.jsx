@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import api from "../api";
+import api, { extractApiData } from "../api";
 import { useAuth } from "../context/AuthContext";
 import { Search, Filter, Download, Eye, BarChart3 } from "lucide-react";
 import { Spinner } from "./ui";
@@ -224,13 +224,49 @@ const StudentManagement = () => {
     }
   };
 
-  // Generate and download PDF profile
+  // Generate and download PDF profile (full profile — list rows only include summary fields)
   const handleDownloadPDF = async (student) => {
+    const sid = student?.studentId;
+    if (!sid || String(sid).trim() === "" || sid === "null") {
+      setError("Student ID is missing — cannot generate profile PDF.");
+      return;
+    }
+
     setIsGeneratingPDF(true);
+    setError("");
     try {
-      generateStudentProfilePDF(student, student.studentId);
+      const response = await api.get(`/student/management/${encodeURIComponent(String(sid).trim())}`);
+      const detail = extractApiData(response);
+      const merged =
+        detail && typeof detail === "object"
+          ? {
+              ...student,
+              ...detail,
+              fullName: detail.fullName ?? student.fullName,
+              name: detail.name ?? student.name,
+              email: detail.email ?? student.email,
+              studentId: detail.studentId ?? student.studentId,
+              department: detail.department ?? student.department,
+              year: detail.year ?? student.year,
+              phone: detail.phone ?? student.phone,
+              academicInfo: detail.academicInfo ?? student.academicInfo,
+              technicalSkills: detail.technicalSkills ?? student.technicalSkills,
+              certifications: detail.certifications ?? student.certifications,
+              projects: detail.projects ?? student.projects,
+              professionalLinks: detail.professionalLinks ?? student.professionalLinks,
+              resume: detail.resume ?? student.resume,
+            }
+          : student;
+
+      generateStudentProfilePDF(merged, merged.studentId);
     } catch (err) {
-      setError(err.message || "Failed to generate PDF");
+      const msg = err.response?.data?.error?.message || err.response?.data?.message || err.message;
+      setError(msg || "Could not load full profile for PDF; try again.");
+      try {
+        generateStudentProfilePDF(student, student.studentId);
+      } catch (e2) {
+        setError(e2?.message || "Failed to generate PDF");
+      }
     } finally {
       setIsGeneratingPDF(false);
     }
