@@ -63,21 +63,19 @@ const PostOpportunityPage = () => {
   };
 
   return (
-    <Layout role="Faculty">
+    <><Layout role="Faculty">
       <SectionTitle title="Post Opportunity" subtitle="Create new opportunities for your department." />
       <StatusMessage message={message} />
       <StatusMessage type="error" message={error} />
-      <OpportunityForm
+      {/* <OpportunityForm
         value={form}
         onChange={setForm}
         onSubmit={submit}
         submitLabel="Create Opportunity"
         showDepartment
         departmentLocked
-        loading={loading}
-      />
-    </Layout>
-    <Footer />
+        loading={loading} /> */}
+    </Layout><Footer /></>
   );
 };
 

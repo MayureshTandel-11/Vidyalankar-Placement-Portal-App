@@ -10,6 +10,7 @@ import ProfilePage from "./pages/ProfilePage";
 import StudentProfilePage from "./pages/StudentProfilePage";
 import FacultyOpportunitiesPage from "./pages/FacultyOpportunitiesPage";
 import AdminOpportunitiesPage from "./pages/AdminOpportunitiesPage";
+import MyPostsPage from "./pages/MyPostsPage";
 import StudentDeletionRequestPage from "./pages/StudentDeletionRequestPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import { useAuth } from "./context/AuthContext";
@@ -53,7 +54,7 @@ const App = () => {
       <Route path="/dashboard" element={<ProtectedRoute><RoleDashboard /></ProtectedRoute>} />
       <Route path="/opportunities" element={<ProtectedRoute><RoleOpportunities /></ProtectedRoute>} />
       <Route path="/post-opportunity" element={<ProtectedRoute allowRoles={["faculty"]}><FacultyOpportunitiesPage /></ProtectedRoute>} />
-      <Route path="/my-posts" element={<ProtectedRoute allowRoles={["faculty"]}><FacultyOpportunitiesPage /></ProtectedRoute>} />
+      <Route path="/my-posts" element={<ProtectedRoute allowRoles={["faculty"]}><MyPostsPage /></ProtectedRoute>} />
       <Route path="/manage-faculty" element={<ProtectedRoute allowRoles={["admin"]}><ManageFacultyPage /></ProtectedRoute>} />
       <Route path="/students" element={<ProtectedRoute allowRoles={["faculty", "admin"]}><Layout role={user?.role?.charAt(0).toUpperCase() + user?.role?.slice(1)}><StudentManagement /></Layout></ProtectedRoute>} />
       {/* FIX: Use dedicated AnalyticsPage instead of broken inline StudentAnalytics with null studentId */}

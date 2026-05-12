@@ -132,8 +132,23 @@ const listOpportunities = async (req, res) => {
     const pipeline = [
       { $match: filter },
       {
+        $lookup: {
+          from: "users",
+          localField: "createdBy",
+          foreignField: "_id",
+          as: "createdByUser"
+        }
+      },
+      {
         $addFields: {
+          createdByEmail: { $arrayElemAt: ["$createdByUser.email", 0] },
+          createdByRole: { $arrayElemAt: ["$createdByUser.role", 0] },
           applicationCount: { $size: { $ifNull: ["$applications", []] } }
+        }
+      },
+      {
+        $project: {
+          createdByUser: 0
         }
       },
       { $sort: { createdAt: -1 } }
@@ -168,7 +183,12 @@ const listOpportunities = async (req, res) => {
 
 const getOpportunityById = async (req, res) => {
   try {
-    const opportunity = await Opportunity.findById(req.params.id);
+    const opportunity = await Opportunity.findById(req.params.id)
+      .populate({
+        path: 'createdBy',
+        select: 'email name',
+        model: 'User'
+      });
     if (!opportunity) {
       console.warn(`[OPPORTUNITY] Not found: ${req.params.id}`);
       return fail(res, 404, "Opportunity not found");
@@ -189,7 +209,15 @@ const getOpportunityById = async (req, res) => {
     }
 
     console.log(`[OPPORTUNITY ✓] ${req.user.role} ${req.user.email} accessed opportunity ${req.params.id}`);
-    return ok(res, normalizeOpportunity(opportunity));
+    // Normalize the populated opportunity
+    const opp = opportunity.toObject();
+    const normalized = {
+      ...opp,
+      id: String(opp._id),
+      createdByEmail: opp.createdBy?.email,
+      createdByRole: opp.createdBy?.role
+    };
+    return ok(res, normalized);
   } catch (error) {
     return fail(res, 500, "Failed to fetch opportunity", error.message);
   }
@@ -412,8 +440,23 @@ const getActiveOpportunities = async (req, res) => {
     const pipeline = [
       { $match: filter },
       {
+        $lookup: {
+          from: "users",
+          localField: "createdBy",
+          foreignField: "_id",
+          as: "createdByUser"
+        }
+      },
+      {
         $addFields: {
+          createdByEmail: { $arrayElemAt: ["$createdByUser.email", 0] },
+          createdByRole: { $arrayElemAt: ["$createdByUser.role", 0] },
           applicationCount: { $size: { $ifNull: ["$applications", []] } }
+        }
+      },
+      {
+        $project: {
+          createdByUser: 0
         }
       },
       { $sort: { lastDate: 1, createdAt: -1 } }
@@ -469,8 +512,23 @@ const getArchivedOpportunities = async (req, res) => {
     const pipeline = [
       { $match: filter },
       {
+        $lookup: {
+          from: "users",
+          localField: "createdBy",
+          foreignField: "_id",
+          as: "createdByUser"
+        }
+      },
+      {
         $addFields: {
+          createdByEmail: { $arrayElemAt: ["$createdByUser.email", 0] },
+          createdByRole: { $arrayElemAt: ["$createdByUser.role", 0] },
           applicationCount: { $size: { $ifNull: ["$applications", []] } }
+        }
+      },
+      {
+        $project: {
+          createdByUser: 0
         }
       },
       { $sort: { lastDate: -1, createdAt: -1 } }
