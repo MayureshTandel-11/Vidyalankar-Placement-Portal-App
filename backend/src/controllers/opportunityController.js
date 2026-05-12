@@ -5,6 +5,13 @@ const { sanitizeString } = require("../utils/sanitize");
 const { ok, fail } = require("../utils/apiResponse");
 const { getTodayStart, normalizeDateToStartOfDay, getStatusFromLastDate } = require("../utils/dateUtils");
 const { OPPORTUNITY_BROADCAST_ALL, isValidOpportunityDepartment, DEPARTMENTS } = require("../constants/departments");
+const {
+  buildDepartmentAudienceMatch,
+  userDepartmentMatchesOpportunity,
+  canFacultyCollaborateOnOpportunity,
+  canFacultyDeleteOpportunity,
+  canFacultyEditOpportunityContent,
+} = require("../utils/opportunityAccess");
 
 
 const deriveStatusFromLastDate = (lastDate) => {
@@ -105,16 +112,7 @@ const normalizeOpportunity = (doc, userEmail = null) => {
   return normalized;
 };
 
-const isOwner = (opportunity, user) => {
-  if (!opportunity || !user) return false;
-  if (user.role === "admin") return true;
-  if (user.role !== "faculty") return false;
-  if (!opportunity.createdBy) return false;
-  return String(opportunity.createdBy) === String(user._id);
-};
-
 const isArchivedOpportunity = (opportunity) => deriveStatusFromLastDate(opportunity.lastDate) === "archived";
-const getDepartmentAudience = (department) => [department, OPPORTUNITY_BROADCAST_ALL];
 
 const listOpportunities = async (req, res) => {
   try {
@@ -128,10 +126,7 @@ const listOpportunities = async (req, res) => {
 
     const filter = {};
     if (req.user.role === "student" || req.user.role === "faculty") {
-      filter.$or = [
-        { department: OPPORTUNITY_BROADCAST_ALL },
-        { department: { $regex: new RegExp(`\\b${req.user.department}\\b`) } }
-      ];
+      Object.assign(filter, buildDepartmentAudienceMatch(req.user.department));
     }
 
     const pipeline = [
@@ -181,17 +176,13 @@ const getOpportunityById = async (req, res) => {
 
     // Role-based access control
     if (req.user.role === "student" || req.user.role === "faculty") {
-      const isAll = opportunity.department === OPPORTUNITY_BROADCAST_ALL;
-      const departmentFilter = opportunity.department;
       const userDept = req.user.department;
+      const hasUserDept = userDepartmentMatchesOpportunity(userDept, opportunity.department);
 
-      // Use regex matching for department (consistent with other endpoints)
-      const hasUserDept = isAll || new RegExp(`\\b${userDept}\\b`).test(departmentFilter);
-
-      if (!isAll && !hasUserDept) {
+      if (!hasUserDept) {
         console.warn(
           `[OPPORTUNITY 403] ${req.user.role} ${req.user.email} denied access to opportunity ${req.params.id}:`,
-          `Expected one of: [${departmentFilter}], Got: ${userDept}`
+          `Expected audience for: [${opportunity.department}], Got user dept: ${userDept}`
         );
         return fail(res, 403, `Forbidden - opportunity not available for your department (${userDept})`);
       }
@@ -310,7 +301,7 @@ const updateOpportunity = async (req, res) => {
     const existing = await Opportunity.findById(req.params.id);
     if (!existing) return fail(res, 404, "Opportunity not found");
 
-    if (!isOwner(existing, req.user)) {
+    if (!canFacultyEditOpportunityContent(req.user, existing)) {
       return fail(res, 403, "You don't have permission to edit this opportunity");
     }
     if (isArchivedOpportunity(existing)) {
@@ -389,7 +380,7 @@ const deleteOpportunity = async (req, res) => {
   try {
     const existing = await Opportunity.findById(req.params.id);
     if (!existing) return fail(res, 404, "Opportunity not found");
-    if (!isOwner(existing, req.user)) return fail(res, 403, "You don't have permission to delete this opportunity");
+    if (!canFacultyDeleteOpportunity(req.user, existing)) return fail(res, 403, "You don't have permission to delete this opportunity");
     if (isArchivedOpportunity(existing)) return fail(res, 409, "Archived opportunities cannot be deleted");
 
     await Opportunity.deleteOne({ _id: existing._id });
@@ -409,16 +400,11 @@ const getActiveOpportunities = async (req, res) => {
     await syncOpportunityStatuses();
     const filter = { status: "active" };
 
-    if (req.user.role === "faculty") {
-      // Faculty can only see opportunities they created
-      filter.createdBy = req.user._id;
-      console.log(`[OPPORTUNITY ACTIVE] Fetching active opportunities for faculty: ${req.user.email}`);
-    } else if (req.user.role === "student") {
-      filter.$or = [
-        { department: OPPORTUNITY_BROADCAST_ALL },
-        { department: { $regex: new RegExp(`\\b${req.user.department}\\b`) } }
-      ];
-      console.log(`[OPPORTUNITY ACTIVE] Fetching active opportunities for student ${req.user.email} (dept: ${req.user.department})`);
+    if (req.user.role === "faculty" || req.user.role === "student") {
+      Object.assign(filter, buildDepartmentAudienceMatch(req.user.department));
+      console.log(
+        `[OPPORTUNITY ACTIVE] Fetching active opportunities for ${req.user.role} ${req.user.email} (dept: ${req.user.department})`
+      );
     } else {
       console.log(`[OPPORTUNITY ACTIVE] Fetching active opportunities for ${req.user.role}: ${req.user.email}`);
     }
@@ -471,16 +457,11 @@ const getArchivedOpportunities = async (req, res) => {
     await syncOpportunityStatuses();
     const filter = { status: "archived" };
 
-    if (req.user.role === "faculty") {
-      // Faculty can only see opportunities they created
-      filter.createdBy = req.user._id;
-      console.log(`[OPPORTUNITY ARCHIVED] Fetching archived opportunities for faculty: ${req.user.email}`);
-    } else if (req.user.role === "student") {
-      filter.$or = [
-        { department: OPPORTUNITY_BROADCAST_ALL },
-        { department: { $regex: new RegExp(`\\b${req.user.department}\\b`) } }
-      ];
-      console.log(`[OPPORTUNITY ARCHIVED] Fetching archived opportunities for student ${req.user.email} (dept: ${req.user.department})`);
+    if (req.user.role === "faculty" || req.user.role === "student") {
+      Object.assign(filter, buildDepartmentAudienceMatch(req.user.department));
+      console.log(
+        `[OPPORTUNITY ARCHIVED] Fetching archived opportunities for ${req.user.role} ${req.user.email} (dept: ${req.user.department})`
+      );
     } else {
       console.log(`[OPPORTUNITY ARCHIVED] Fetching archived opportunities for ${req.user.role}: ${req.user.email}`);
     }
@@ -595,11 +576,8 @@ const getApplicantsCount = async (req, res) => {
     const opportunity = await Opportunity.findById(req.params.id);
     if (!opportunity) return fail(res, 404, "Opportunity not found");
 
-    // Authorization check: admin can see all, faculty can only see their own
-    if (req.user.role === "faculty") {
-      if (!opportunity.createdBy || String(opportunity.createdBy) !== String(req.user._id)) {
-        return fail(res, 403, "Access denied.");
-      }
+    if (req.user.role === "faculty" && !canFacultyCollaborateOnOpportunity(req.user, opportunity)) {
+      return fail(res, 403, "Access denied.");
     }
 
     const count = opportunity.applications.length;
@@ -614,11 +592,8 @@ const getApplicants = async (req, res) => {
     const opportunity = await Opportunity.findById(req.params.id);
     if (!opportunity) return fail(res, 404, "Opportunity not found");
 
-    // Authorization check: admin can see all, faculty can only see their own
-    if (req.user.role === "faculty") {
-      if (!opportunity.createdBy || String(opportunity.createdBy) !== String(req.user._id)) {
-        return fail(res, 403, "Access denied.");
-      }
+    if (req.user.role === "faculty" && !canFacultyCollaborateOnOpportunity(req.user, opportunity)) {
+      return fail(res, 403, "Access denied.");
     }
 
     const applicants = opportunity.applications.map(app => ({
@@ -644,8 +619,7 @@ const getOpportunityApplications = async (req, res) => {
 
     if (!opportunity) return fail(res, 404, "Opportunity not found");
 
-    // Permission check: admin, faculty (owner), or own opportunity
-    if (req.user.role !== "admin" && !isOwner(opportunity, req.user)) {
+    if (req.user.role !== "admin" && !canFacultyCollaborateOnOpportunity(req.user, opportunity)) {
       return fail(res, 403, "You don't have permission to view applications");
     }
 
@@ -702,9 +676,8 @@ const saveStageSelections = async (req, res) => {
       return fail(res, 404, "Opportunity not found");
     }
 
-    // Check authorization (faculty can only update their opportunities, admin can update any)
-    if (req.user.role === "faculty" && String(opportunity.createdBy) !== String(req.user._id)) {
-      return fail(res, 403, "You can only manage selections for your own opportunities");
+    if (req.user.role === "faculty" && !canFacultyCollaborateOnOpportunity(req.user, opportunity)) {
+      return fail(res, 403, "You can only manage selections for opportunities in your department");
     }
 
     // Sanitize student IDs
@@ -782,19 +755,15 @@ const getStageSelections = async (req, res) => {
     }
 
     // Fetch opportunity
-    const opportunity = await Opportunity.findById(opportunityId).select(
-      "stageManualSelections selectedStudents"
-    ).lean();
+    const opportunity = await Opportunity.findById(opportunityId)
+      .select("stageManualSelections selectedStudents department createdBy")
+      .lean();
     if (!opportunity) {
       return fail(res, 404, "Opportunity not found");
     }
 
-    // Check authorization
-    if (req.user.role === "faculty") {
-      const opp = await Opportunity.findById(opportunityId);
-      if (String(opp.createdBy) !== String(req.user._id)) {
-        return fail(res, 403, "You can only view selections for your own opportunities");
-      }
+    if (req.user.role === "faculty" && !canFacultyCollaborateOnOpportunity(req.user, opportunity)) {
+      return fail(res, 403, "You can only view selections for opportunities in your department");
     }
 
     // Find stage selection

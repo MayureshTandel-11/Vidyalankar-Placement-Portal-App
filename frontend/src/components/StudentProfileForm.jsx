@@ -1,10 +1,12 @@
 import { useState, useEffect, forwardRef, useImperativeHandle } from "react";
 import { BookOpen, Code, Award, Briefcase, Link as LinkIcon, FileText, X, Plus, ChevronDown, ChevronUp, AlertCircle, CheckCircle, Loader } from "lucide-react";
-import api, { extractApiData, extractApiError, getApiUrl } from "../api";
+import api, { extractApiData, extractApiError, getAccessToken, getApiUrl } from "../api";
 import { PrimaryButton, StatusMessage } from "./ui";
 import SKILLS_BY_DEPARTMENT from "../constants/skillsByDepartment";
+import { useAuth } from "../context/AuthContext";
 
 const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
+  const { isHydrated, token } = useAuth();
   const [activeTab, setActiveTab] = useState(1);
   const [loading, setLoading] = useState(false);
   const [savingSection, setSavingSection] = useState(null);
@@ -53,6 +55,9 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
   const [validationErrors, setValidationErrors] = useState({});
 
   useEffect(() => {
+    if (!isHydrated) return;
+    if (!token && !getAccessToken()) return;
+
     const loadProfile = async () => {
       try {
         const response = await api.get("/student/profile");
@@ -65,9 +70,9 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
             year: profile.year || "",
             academiInfo: {
               year: profile.academicInfo?.year || "",
-              sscPercentage: profile.academicInfo?.sscPercentage || "",
-              hscPercentage: profile.academicInfo?.hscPercentage || "",
-              cgpa: profile.academicInfo?.cgpa || "",
+              sscPercentage: profile.academicInfo?.sscPercentage ?? "",
+              hscPercentage: profile.academicInfo?.hscPercentage ?? "",
+              cgpa: profile.academicInfo?.cgpa ?? "",
             },
             phone: profile.phone || "",
             technicalSkills: Array.isArray(profile.technicalSkills) ? profile.technicalSkills : [],
@@ -90,62 +95,77 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
       }
     };
     loadProfile();
-  }, []);
+  }, [isHydrated, token]);
 
   // Expose saveAll method to parent via ref
   useImperativeHandle(ref, () => ({
     async saveAll() {
-      try {
-        setLoading(true);
-        let allSaved = true;
+      setLoading(true);
+      setErrorMsg("");
+      setSuccessMsg("");
+      const failures = [];
 
-        // Try to save each section
-        const academicErrors = validateAcademicInfo();
-        if (Object.keys(academicErrors).length === 0) {
+      try {
+        if (formData.studentId?.trim()) {
           try {
-            await api.post("/student/academic-info", {
-              ...formData.academiInfo,
-              phone: formData.phone,
-            });
-          } catch (error) {
-            console.error("Error saving academic info:", error);
-            allSaved = false;
+            await api.post("/student/student-id", { studentId: formData.studentId.trim() });
+          } catch (e) {
+            failures.push(extractApiError(e, "Student ID"));
           }
         }
 
-        const skillsErrors = validateTechnicalSkills();
-        if (Object.keys(skillsErrors).length === 0) {
-          try {
-            await api.post("/student/technical-skills", {
-              skills: formData.technicalSkills,
-            });
-          } catch (error) {
-            console.error("Error saving skills:", error);
-            allSaved = false;
+        const academicErrors = validateAcademicInfo();
+        if (formData.year) {
+          if (Object.keys(academicErrors).length === 0) {
+            try {
+              await api.post("/student/academic-info", {
+                ...formData.academiInfo,
+                year: formData.year,
+                phone: formData.phone,
+              });
+            } catch (e) {
+              failures.push(extractApiError(e, "Academic info"));
+            }
+          } else {
+            failures.push("Fix academic section validation before continuing");
           }
+        } else if (formData.phone?.trim()?.length === 10) {
+          try {
+            await api.post("/student/academic-info", { phone: formData.phone.trim() });
+          } catch (e) {
+            failures.push(extractApiError(e, "Phone / academic info"));
+          }
+        }
+
+        try {
+          await api.post("/student/technical-skills", {
+            skills: Array.isArray(formData.technicalSkills) ? formData.technicalSkills : [],
+          });
+        } catch (e) {
+          failures.push(extractApiError(e, "Technical skills"));
         }
 
         const linksErrors = validateProfessionalLinks();
         if (Object.keys(linksErrors).length === 0) {
           try {
             await api.post("/student/professional-links", formData.professionalLinks);
-          } catch (error) {
-            console.error("Error saving professional links:", error);
-            allSaved = false;
+          } catch (e) {
+            failures.push(extractApiError(e, "Professional links"));
           }
+        } else {
+          failures.push("Fix professional link URLs");
         }
 
-        if (allSaved) {
-          setSuccessMsg("All sections saved successfully!");
-          onFormChange && onFormChange();
-          return true;
-        } else {
-          setErrorMsg("Some sections failed to save. Please review and try again.");
+        if (failures.length) {
+          setErrorMsg(failures.join(" · "));
           return false;
         }
+
+        setSuccessMsg("All sections saved successfully");
+        onFormChange && onFormChange();
+        return true;
       } catch (error) {
-        setErrorMsg("Error saving profile. Please try again.");
-        console.error("Save all error:", error);
+        setErrorMsg(extractApiError(error, "Error saving profile"));
         return false;
       } finally {
         setLoading(false);
@@ -373,7 +393,7 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
       return;
     }
 
-    setSavingSection(5);
+    setSavingSection(6);
     const formDataToSend = new FormData();
     formDataToSend.append("resume", file);
 
@@ -800,8 +820,8 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
               <div className="space-y-2">
                 <h3 className="font-semibold text-slate-900">Your Certifications</h3>
                 <div className="space-y-2">
-                  {formData.certifications.map((cert) => (
-                    <div key={cert._id} className="flex items-center justify-between rounded-lg border border-slate-200 p-4 hover:bg-slate-50">
+                  {formData.certifications.map((cert, cIdx) => (
+                    <div key={cert._id || `cert-${cIdx}-${cert.title}`} className="flex items-center justify-between rounded-lg border border-slate-200 p-4 hover:bg-slate-50">
                       <div>
                         <p className="font-medium text-slate-900">{cert.title}</p>
                         <p className="text-sm text-slate-600">{cert.issuer}</p>
@@ -907,12 +927,12 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
                 <h3 className="font-semibold text-slate-900">Your Projects</h3>
                 <div className="space-y-3">
                   {formData.projects.map((proj) => (
-                    <div key={proj._id} className="rounded-lg border border-slate-200 p-4">
+                    <div key={proj._id || `proj-${proj.title}`} className="rounded-lg border border-slate-200 p-4">
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <p className="font-medium text-slate-900">{proj.title}</p>
                           <p className="mt-1 text-sm text-slate-600">{proj.description}</p>
-                          {proj.technologies.length > 0 && (
+                          {proj.technologies && proj.technologies.length > 0 && (
                             <div className="mt-2 flex flex-wrap gap-1">
                               {proj.technologies.map((tech, index) => (
                                 <span key={`tech-${proj._id}-${index}-${tech}`} className="inline-block rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-700">

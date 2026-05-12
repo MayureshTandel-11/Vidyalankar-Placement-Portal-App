@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
-import { extractApiError } from "../api";
 import Layout from "../components/Layout";
 import Footer from "../components/Footer";
 import OpportunityCard from "../components/OpportunityCard";
@@ -11,7 +10,7 @@ import { getApplicantsCount, deleteOpportunity } from "../services/opportunities
 
 const FacultyDashboard = () => {
   const navigate = useNavigate();
-  const { opportunities, loading, fetchOpportunities } = useOpportunities();
+  const { opportunities, loading, refetch } = useOpportunities();
   const [active, setActive] = useState([]);
   const [archive, setArchive] = useState([]);
   const [error, setError] = useState("");
@@ -25,9 +24,6 @@ const FacultyDashboard = () => {
    * a page refresh where context initialises empty then fills asynchronously.
    */
   useEffect(() => {
-    if (process.env.NODE_ENV === "development") {
-      console.log("[FACULTY DASHBOARD] Updating from context opportunities");
-    }
     setActive(opportunities?.active || []);
     setArchive(opportunities?.archive || []);
     if (opportunities?.active || opportunities?.archive) {
@@ -36,8 +32,7 @@ const FacultyDashboard = () => {
   }, [opportunities]);
 
   /**
-   * Load applicant counts
-   * CRITICAL: No countsLoadedRef guard - reload when opportunities change
+   * Applicant counts load when opportunities list changes (context handles fetching).
    */
   const loadApplicantCounts = useCallback(async () => {
     const allOpportunities = [...active, ...archive];
@@ -77,31 +72,6 @@ const FacultyDashboard = () => {
     }
   }, [active, archive]);
 
-  /**
-   * Initial load on mount
-   * CRITICAL: No hasLoadedRef guard - let deduplicator handle duplicate requests
-   */
-  useEffect(() => {
-    const load = async () => {
-      setError("");
-      try {
-        if (process.env.NODE_ENV === "development") {
-          console.log("[FACULTY DASHBOARD] Mount: triggering fetch");
-        }
-        await fetchOpportunities();
-      } catch (err) {
-        const errorMsg = extractApiError(err, "Failed to load dashboard opportunities");
-        setError(errorMsg);
-        toast.error(errorMsg);
-      }
-    };
-
-    load();
-  }, []); // Empty dependency - runs only once on mount
-
-  /**
-   * Load applicant counts after opportunities are loaded
-   */
   useEffect(() => {
     if (active.length > 0 || archive.length > 0) {
       loadApplicantCounts();
@@ -132,8 +102,7 @@ const FacultyDashboard = () => {
               try {
                 setDeletingId(opportunity._id);
                 await deleteOpportunity(opportunity._id);
-                setActive(active.filter(o => o._id !== opportunity._id));
-                setArchive(archive.filter(o => o._id !== opportunity._id));
+                await refetch();
                 const newCounts = { ...applicantCounts };
                 delete newCounts[opportunity._id];
                 setApplicantCounts(newCounts);

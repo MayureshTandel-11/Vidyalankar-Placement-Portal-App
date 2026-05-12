@@ -73,58 +73,68 @@ const updateAcademicInfo = async (req, res) => {
 
     const { year, sscPercentage, hscPercentage, cgpa, phone } = req.body;
 
-    // Validate inputs
     if (year && !["1st Year", "2nd Year", "3rd Year", "4th Year"].includes(year)) {
       return fail(res, 400, "Year must be one of: 1st Year, 2nd Year, 3rd Year, 4th Year");
     }
 
-    if (sscPercentage && (sscPercentage < 0 || sscPercentage > 100)) {
-      return fail(res, 400, "SSC percentage must be between 0 and 100");
-    }
-
-    if (hscPercentage && (hscPercentage < 0 || hscPercentage > 100)) {
-      return fail(res, 400, "HSC percentage must be between 0 and 100");
-    }
-
-    if (cgpa && (cgpa < 0 || cgpa > 10)) {
-      return fail(res, 400, "CGPA must be between 0 and 10");
-    }
-
-    if (phone && !validatePhone(phone)) {
-      return fail(res, 400, "Phone must be exactly 10 digits");
-    }
-
-    // Prepare update object
-    const updateData = {
-      academicInfo: {
-        sscPercentage,
-        hscPercentage,
-        cgpa,
-      },
+    const toOptionalNumber = (value, min, max, label) => {
+      if (value === undefined || value === null || value === "") return undefined;
+      const n = Number(value);
+      if (Number.isNaN(n)) {
+        throw new Error(`${label} must be a number`);
+      }
+      if (n < min || n > max) {
+        throw new Error(`${label} must be between ${min} and ${max}`);
+      }
+      return n;
     };
 
-    // Handle year - update both academicInfo and top-level year field
+    const existing = await User.findById(req.user._id);
+    if (!existing) {
+      return fail(res, 404, "Student not found");
+    }
+
+    const prevAi = existing.academicInfo || {};
+
+    let sscNum;
+    let hscNum;
+    let cgpaNum;
+    try {
+      sscNum = toOptionalNumber(sscPercentage, 0, 100, "SSC percentage");
+      hscNum = toOptionalNumber(hscPercentage, 0, 100, "HSC percentage");
+      cgpaNum = toOptionalNumber(cgpa, 0, 10, "CGPA");
+    } catch (e) {
+      return fail(res, 400, e.message);
+    }
+
+    const academicInfo = {
+      ...prevAi,
+      ...(sscNum !== undefined ? { sscPercentage: sscNum } : {}),
+      ...(hscNum !== undefined ? { hscPercentage: hscNum } : {}),
+      ...(cgpaNum !== undefined ? { cgpa: cgpaNum } : {}),
+    };
+
     if (year) {
-      updateData.year = year;
-      updateData.academicInfo.year = parseInt(year.charAt(0)); // Convert "1st Year" to 1, etc.
+      academicInfo.year = parseInt(String(year).charAt(0), 10);
     }
 
-    // Remove undefined values
-    Object.keys(updateData.academicInfo).forEach(
-      (key) =>
-        updateData.academicInfo[key] === undefined &&
-        delete updateData.academicInfo[key]
-    );
+    const $set = { academicInfo };
 
-    // Add phone if provided
-    if (phone) {
-      updateData.phone = phone;
+    if (year) {
+      $set.year = year;
     }
 
-    const student = await User.findByIdAndUpdate(
-      req.user._id,
-      updateData,
-      { returnDocument: "after", runValidators: true }
+    if (phone !== undefined && phone !== null && String(phone).trim() !== "") {
+      if (!validatePhone(phone)) {
+        return fail(res, 400, "Phone must be exactly 10 digits");
+      }
+      $set.phone = String(phone).trim();
+    }
+
+    const student = await User.findOneAndUpdate(
+      { _id: req.user._id, role: "student" },
+      { $set },
+      { new: true, runValidators: true, upsert: false }
     );
 
     if (!student) {
@@ -156,10 +166,10 @@ const updateTechnicalSkills = async (req, res) => {
 
     const sanitizedSkills = skills.map((skill) => sanitizeString(skill)).filter(Boolean);
 
-    const student = await User.findByIdAndUpdate(
-      req.user._id,
-      { technicalSkills: sanitizedSkills },
-      { returnDocument: "after", runValidators: true }
+    const student = await User.findOneAndUpdate(
+      { _id: req.user._id, role: "student" },
+      { $set: { technicalSkills: sanitizedSkills } },
+      { new: true, runValidators: true, upsert: false }
     );
 
     if (!student) {
@@ -478,25 +488,31 @@ const updateProfessionalLinks = async (req, res) => {
       return fail(res, 400, "Invalid AlmaShine profile URL");
     }
 
-    const updateData = {
-      professionalLinks: {
-        linkedinProfile: linkedinProfile ? sanitizeString(linkedinProfile) : undefined,
-        githubProfile: githubProfile ? sanitizeString(githubProfile) : undefined,
-        almaShineProfile: almaShineProfile ? sanitizeString(almaShineProfile) : undefined,
-      },
+    const existing = await User.findById(req.user._id).select("professionalLinks");
+    if (!existing) {
+      return fail(res, 404, "Student not found");
+    }
+
+    const prev = existing.professionalLinks || {};
+    const professionalLinks = {
+      linkedinProfile:
+        linkedinProfile !== undefined
+          ? sanitizeString(linkedinProfile || "")
+          : prev.linkedinProfile || "",
+      githubProfile:
+        githubProfile !== undefined
+          ? sanitizeString(githubProfile || "")
+          : prev.githubProfile || "",
+      almaShineProfile:
+        almaShineProfile !== undefined
+          ? sanitizeString(almaShineProfile || "")
+          : prev.almaShineProfile || "",
     };
 
-    // Remove undefined values
-    Object.keys(updateData.professionalLinks).forEach(
-      (key) =>
-        updateData.professionalLinks[key] === undefined &&
-        delete updateData.professionalLinks[key]
-    );
-
-    const student = await User.findByIdAndUpdate(
-      req.user._id,
-      updateData,
-      { returnDocument: "after", runValidators: true }
+    const student = await User.findOneAndUpdate(
+      { _id: req.user._id, role: "student" },
+      { $set: { professionalLinks } },
+      { new: true, runValidators: true, upsert: false }
     );
 
     if (!student) {
@@ -566,8 +582,12 @@ const downloadResume = async (req, res) => {
     }
 
     // Check authorization
-    if (req.user.role === "faculty" && student.department !== req.user.department) {
-      return fail(res, 403, "You can only download resumes for students in your department");
+    if (req.user.role === "faculty") {
+      const a = String(student.department || "").trim().toLowerCase();
+      const b = String(req.user.department || "").trim().toLowerCase();
+      if (!a || !b || a !== b) {
+        return fail(res, 403, "You can only download resumes for students in your department");
+      }
     }
 
     const rel = student.resume?.filePath || student.resume?.resumeUrl;

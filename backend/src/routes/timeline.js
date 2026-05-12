@@ -6,7 +6,7 @@ const OpportunityTimeline = require("../models/OpportunityTimeline");
 const Opportunity = require("../models/Opportunity");
 const OpportunityAttendance = require("../models/OpportunityAttendance");
 const { getIO } = require("../utils/io");
-const { ok, fail } = require("../utils/apiResponse");
+const { canFacultyCollaborateOnOpportunity, canViewOpportunityAsAudience } = require("../utils/opportunityAccess");
 
 const router = express.Router();
 
@@ -56,6 +56,10 @@ router.post("/:opportunityId", protect, allowRoles("faculty", "admin"), async (r
     const opportunity = await Opportunity.findById(opportunityId);
     if (!opportunity) {
       return res.status(404).json({ message: "Opportunity not found" });
+    }
+
+    if (req.user.role === "faculty" && !canFacultyCollaborateOnOpportunity(req.user, opportunity)) {
+      return res.status(403).json({ message: "You don't have access to this opportunity" });
     }
 
     // Create timeline entry
@@ -158,6 +162,10 @@ router.get("/:opportunityId", protect, async (req, res) => {
     const opportunity = await Opportunity.findById(opportunityId);
     if (!opportunity) {
       return res.status(404).json({ message: "Opportunity not found" });
+    }
+
+    if ((req.user.role === "student" || req.user.role === "faculty") && !canViewOpportunityAsAudience(req.user, opportunity)) {
+      return res.status(403).json({ message: "You don't have access to this opportunity timeline" });
     }
 
     // Fetch timeline entries

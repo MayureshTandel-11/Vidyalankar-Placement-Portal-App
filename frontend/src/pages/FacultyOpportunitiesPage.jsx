@@ -7,6 +7,7 @@ import OpportunityCard from "../components/OpportunityCard";
 import OpportunityForm from "../components/OpportunityForm";
 import { EmptyState, SectionTitle, Spinner, StatusMessage } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
+import { getAccessToken } from "../api";
 import {
   createOpportunity,
   deleteOpportunity,
@@ -14,6 +15,7 @@ import {
   getOpportunityById,
   updateOpportunity,
 } from "../services/opportunitiesService";
+import { facultyCanCollaborateOnOpportunity, facultyCanDeleteOpportunity } from "../utils/opportunityDepartment";
 
 const LAST_DEPARTMENT_KEY = "lastDepartment";
 
@@ -50,10 +52,9 @@ const isArchived = (item) => {
   return todayMidnight > lastMidnight;
 };
 
-const isOwner = (opportunity, userEmail) => {
-  if (!opportunity || !userEmail) return false;
-  return String(opportunity.createdBy) === String(userEmail);
-};
+const canFacultyEditOpportunity = (opportunity, user) =>
+  user?.role === "admin" ||
+  (user?.role === "faculty" && facultyCanCollaborateOnOpportunity(user, opportunity));
 
 const isValidHttpUrl = (value) => {
   try {
@@ -65,7 +66,7 @@ const isValidHttpUrl = (value) => {
 };
 
 const FacultyOpportunitiesPage = () => {
-  const { user } = useAuth();
+  const { user, isHydrated, token } = useAuth();
   const [form, setForm] = useState(() => getInitialForm(user?.department));
   const [editingId, setEditingId] = useState(null);
   const [selectedOpportunity, setSelectedOpportunity] = useState(null);
@@ -102,8 +103,10 @@ const FacultyOpportunitiesPage = () => {
   }, []);
 
   useEffect(() => {
+    if (!isHydrated) return;
+    if (!token && !getAccessToken()) return;
     loadOpportunities();
-  }, [loadOpportunities]);
+  }, [isHydrated, token, loadOpportunities]);
 
   useEffect(() => {
     const editId = searchParams.get("edit");
@@ -202,10 +205,13 @@ const FacultyOpportunitiesPage = () => {
     });
 
     try {
-      if (editingId) {
+        if (editingId) {
         const match = opportunities.find((item) => (item.id || item._id) === editingId);
         if (match && isArchived(match)) {
           throw new Error("Cannot edit archived opportunities");
+        }
+        if (match && !canFacultyEditOpportunity(match, user)) {
+          throw new Error("You don't have permission to edit this opportunity");
         }
         await updateOpportunity(editingId, payload);
         toast.success("Opportunity updated", { duration: 2500 });
@@ -229,7 +235,7 @@ const FacultyOpportunitiesPage = () => {
 
   const handleEdit = async (item) => {
     const id = item.id || item._id;
-    if (!isOwner(item, user?.email)) {
+    if (!canFacultyEditOpportunity(item, user)) {
       setError("You don't have permission to edit this opportunity");
       toast.error("You don't have permission to edit this opportunity");
       return;
@@ -247,7 +253,7 @@ const FacultyOpportunitiesPage = () => {
   const handleDelete = (item) => {
     const id = item.id || item._id;
 
-    if (!isOwner(item, user?.email)) {
+    if (!facultyCanDeleteOpportunity(user, item)) {
       setError("You don't have permission to delete this opportunity");
       toast.error("You don't have permission to delete this opportunity");
       return;
@@ -309,7 +315,7 @@ const FacultyOpportunitiesPage = () => {
   return (
     <>
       <Layout role="Faculty">
-      <SectionTitle title="Faculty Opportunities" subtitle="Create, edit, and delete opportunities owned by you." />
+      <SectionTitle title="Faculty Opportunities" subtitle="Create opportunities and collaborate on postings for your department." />
       <StatusMessage message={message} />
       <StatusMessage type="error" message={error} />
       <OpportunityForm
@@ -331,7 +337,9 @@ const FacultyOpportunitiesPage = () => {
         ) : sorted.length ? (
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
             {sorted.map((item) => {
-              const canManageItem = isOwner(item, user?.email);
+              const canEdit = canFacultyEditOpportunity(item, user);
+              const canDelete = facultyCanDeleteOpportunity(user, item);
+              const canManageItem = canEdit || canDelete;
               return (
                 <OpportunityCard
                   key={item.id || item._id}
@@ -339,7 +347,7 @@ const FacultyOpportunitiesPage = () => {
                   canManage={canManageItem}
                   onEdit={handleEdit}
                   onDelete={handleDelete}
-                  editDisabled={isArchived(item) || !canManageItem}
+                  editDisabled={isArchived(item) || !canEdit}
                   editLoading={Boolean(editingId && (item.id || item._id) === editingId && saving)}
                   deleteLoading={deletingId === (item.id || item._id)}
                 />

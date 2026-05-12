@@ -93,7 +93,6 @@ const userSchema = new mongoose.Schema(
         title: { type: String, trim: true },
         issuer: { type: String, trim: true },
         issueDate: { type: Date },
-        _id: false,
       },
     ],
     projects: [
@@ -112,7 +111,6 @@ const userSchema = new mongoose.Schema(
             message: "Invalid project link URL",
           },
         },
-        _id: false,
       },
     ],
     resume: {

@@ -10,7 +10,7 @@ import { useAuth } from "../context/AuthContext";
 import { useOpportunities } from "../context/OpportunitiesContext";
 
 const StudentDashboard = ({ role = "Student" }) => {
-  const { opportunities, loading, fetchOpportunities } = useOpportunities();
+  const { opportunities, loading, refetch } = useOpportunities();
   const { user } = useAuth();
   const [active, setActive] = useState([]);
   const [archive, setArchive] = useState([]);
@@ -24,36 +24,10 @@ const StudentDashboard = ({ role = "Student" }) => {
    * This runs whenever context opportunities are updated
    */
   useEffect(() => {
-    if (opportunities?.active?.length > 0 || opportunities?.archive?.length > 0) {
-      console.log("[DASHBOARD] Updating from context opportunities");
-      setActive(opportunities.active || []);
-      setArchive(opportunities.archive || []);
-      setError("");
-    }
+    setActive(opportunities?.active || []);
+    setArchive(opportunities?.archive || []);
+    setError("");
   }, [opportunities]);
-
-  /**
-   * Initial load on mount
-   * CRITICAL: No hasLoadedRef guard - let deduplicator handle duplicate requests
-   * Ensures remount always triggers fetch (deduplicator will deduplicate concurrent requests)
-   */
-  useEffect(() => {
-    const load = async () => {
-      setError("");
-      try {
-        if (process.env.NODE_ENV === "development") {
-          console.log("[DASHBOARD] Mount: triggering fetch");
-        }
-        await fetchOpportunities();
-      } catch (err) {
-        const errorMsg = extractApiError(err, "Failed to load opportunities");
-        setError(errorMsg);
-        toast.error(errorMsg);
-      }
-    };
-
-    load();
-  }, []); // Empty dependency - runs only once on mount
 
   /**
    * Apply to opportunity
@@ -62,19 +36,14 @@ const StudentDashboard = ({ role = "Student" }) => {
     try {
       await applyToOpportunity(id);
       toast.success("Applied successfully!");
-      // Update local state
-      setActive((prev) =>
-        prev.map((opp) =>
-          opp._id === id ? { ...opp, hasApplied: true } : opp
-        )
-      );
+      await refetch();
       setError("");
     } catch (err) {
       const errorMsg = extractApiError(err, "Failed to apply to opportunity");
       toast.error(errorMsg);
       throw err;
     }
-  }, []);
+  }, [refetch]);
 
   /**
    * Memoized filtered and sorted active opportunities
@@ -83,7 +52,7 @@ const StudentDashboard = ({ role = "Student" }) => {
     () =>
       [...active]
         .filter((item) => {
-          const matchesSearch = item.announcementHeading
+          const matchesSearch = (item.announcementHeading || "")
             .toLowerCase()
             .includes(search.toLowerCase());
           const matchesFilter =
@@ -105,7 +74,7 @@ const StudentDashboard = ({ role = "Student" }) => {
     () =>
       [...archive]
         .filter((item) =>
-          item.announcementHeading
+          (item.announcementHeading || "")
             .toLowerCase()
             .includes(search.toLowerCase())
         )

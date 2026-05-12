@@ -7,8 +7,17 @@ const Opportunity = require("../models/Opportunity");
 const { getIO } = require("../utils/io");
 const { ok, fail } = require("../utils/apiResponse");
 const { generateAttendanceCSV, generateAttendanceFilename } = require("../utils/csvExport");
+const { canFacultyCollaborateOnOpportunity } = require("../utils/opportunityAccess");
 
 const router = express.Router();
+
+const blockFacultyWithoutOpportunityAccess = (req, res, opportunity) => {
+  if (req.user.role === "faculty" && (!opportunity || !canFacultyCollaborateOnOpportunity(req.user, opportunity))) {
+    res.status(403).json({ success: false, message: "You don't have access to this opportunity" });
+    return true;
+  }
+  return false;
+};
 
 // ======================================
 // HELPER: Check if stage is General Update
@@ -57,6 +66,7 @@ router.get("/:opportunityId/:stage", protect, allowRoles("faculty", "admin"), as
     if (!opportunity) {
       return res.status(404).json({ message: "Opportunity not found" });
     }
+    if (blockFacultyWithoutOpportunityAccess(req, res, opportunity)) return;
 
     // Verify the stage has been registered (either active or historical)
     // Allow viewing any stage that has been activated at some point
@@ -169,6 +179,7 @@ router.patch("/:opportunityId", protect, allowRoles("faculty", "admin"), async (
     if (!opportunity) {
       return res.status(404).json({ message: "Opportunity not found" });
     }
+    if (blockFacultyWithoutOpportunityAccess(req, res, opportunity)) return;
 
     const stageStatus = opportunity.stageAttendanceStatus?.find((s) => s.stage === stage);
     if (stageStatus?.isSubmitted) {
@@ -283,6 +294,7 @@ router.post("/submit/:opportunityId/:stage", protect, allowRoles("faculty", "adm
     if (!opportunity) {
       return res.status(404).json({ message: "Opportunity not found" });
     }
+    if (blockFacultyWithoutOpportunityAccess(req, res, opportunity)) return;
 
     // Verify stage is active
     if (!opportunity.activeStages.includes(stage)) {
@@ -418,6 +430,7 @@ router.get("/download/:opportunityId/:stage", protect, allowRoles("faculty", "ad
     if (!opportunity) {
       return res.status(404).json({ message: "Opportunity not found" });
     }
+    if (blockFacultyWithoutOpportunityAccess(req, res, opportunity)) return;
 
     // Verify attendance has been submitted for this specific stage
     // This is the ONLY requirement - submission status, not stage activation status
@@ -533,6 +546,7 @@ router.post("/select-next-round/:opportunityId/:stage", protect, allowRoles("fac
     if (!opportunity) {
       return res.status(404).json({ message: "Opportunity not found" });
     }
+    if (blockFacultyWithoutOpportunityAccess(req, res, opportunity)) return;
 
     // Map stage name to schema field name
     const stageMapping = {
@@ -696,6 +710,7 @@ router.post("/manual-select/:opportunityId/:stage", protect, allowRoles("faculty
     if (!opportunity) {
       return res.status(404).json({ message: "Opportunity not found" });
     }
+    if (blockFacultyWithoutOpportunityAccess(req, res, opportunity)) return;
 
     // Check if attendance has been submitted for this stage
     const stageStatus = opportunity.stageAttendanceStatus?.find((s) => s.stage === stage);
@@ -889,6 +904,7 @@ router.get("/manual-selections/:opportunityId/:stage", protect, allowRoles("facu
     if (!opportunity) {
       return res.status(404).json({ message: "Opportunity not found" });
     }
+    if (blockFacultyWithoutOpportunityAccess(req, res, opportunity)) return;
 
     // Get manual selections for this stage
     const manualSelection = opportunity.stageManualSelections?.find((s) => s.stage === stage);

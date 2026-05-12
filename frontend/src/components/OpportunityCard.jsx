@@ -9,6 +9,7 @@ import { DEPARTMENTS, OPPORTUNITY_BROADCAST_ALL } from "../constants/departments
 import { useAuth } from "../context/AuthContext";
 import { useOpportunities } from "../context/OpportunitiesContext";
 import { getSocket } from "../utils/socket";
+import { facultyCanCollaborateOnOpportunity, facultyCanDeleteOpportunity } from "../utils/opportunityDepartment";
 import OpportunityTimeline from "./OpportunityTimeline";
 import OpportunityAttendance from "./OpportunityAttendance";
 import { getApplicantsCount, getApplicants } from "../services/opportunitiesService";
@@ -75,23 +76,19 @@ const OpportunityCard = ({
   const effectiveApplied = localApplied || hasApplied;
 
   const userRole = user?.role || "student";
-  const userId = user?._id;
 
-  const canEditDelete =
+  const canEditOpportunity =
     userRole === "admin" ||
-    (userRole === "faculty" && String(opportunity.createdBy) === String(userId));
-
-  const isFacultyOwner =
-    userRole === "faculty" && String(opportunity.createdBy) === String(userId);
+    (userRole === "faculty" && facultyCanCollaborateOnOpportunity(user, opportunity));
+  const canDeleteOpportunity = facultyCanDeleteOpportunity(user, opportunity);
 
   const archived = opportunity.status === "archived" || isExpired(opportunity.lastDate);
   const isDisabled = archived || effectiveApplied;
   const isStudent = userRole === "student";
 
-  // Define shouldShowApplicants before using it
   const shouldShowApplicants =
-    (user?.role === "admin") ||
-    (user?.role === "faculty" && String(opportunity.createdBy) === String(user?._id));
+    userRole === "admin" ||
+    (userRole === "faculty" && facultyCanCollaborateOnOpportunity(user, opportunity));
 
   // Function to refresh active stages
   const refreshActiveStages = useCallback(async () => {
@@ -277,8 +274,9 @@ const OpportunityCard = ({
             View Details
           </PrimaryButton>
         </div>
-        {canManage && canEditDelete ? (
+        {canManage && (canEditOpportunity || canDeleteOpportunity) ? (
           <div className="pointer-events-none absolute right-2 sm:right-3 top-2 sm:top-3 flex gap-1.5 xs:gap-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+            {canEditOpportunity ? (
             <button
               type="button"
               disabled={archived || editDisabled || editLoading || deleteLoading}
@@ -297,6 +295,8 @@ const OpportunityCard = ({
             >
               <Pencil size={14} />
             </button>
+            ) : null}
+            {canDeleteOpportunity ? (
             <button
               type="button"
               disabled={archived || editLoading || deleteLoading}
@@ -315,6 +315,7 @@ const OpportunityCard = ({
             >
               <Trash2 size={14} />
             </button>
+            ) : null}
           </div>
         ) : null}
       </Motion.article>

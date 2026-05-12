@@ -23,10 +23,10 @@ const opportunitiesReducer = (state, action) => {
         lastFetch: Date.now(),
         loading: false,
       };
-    case "UPDATE_OPPORTUNITY":
+    case "UPDATE_OPPORTUNITY": {
       const updateOpp = (list, id, updates) =>
         list.map((opp) =>
-          opp._id === id ? { ...opp, ...updates } : opp
+          String(opp._id || opp.id) === String(id) ? { ...opp, ...updates } : opp
         );
 
       return {
@@ -36,6 +36,7 @@ const opportunitiesReducer = (state, action) => {
           archive: updateOpp(state.opportunities.archive || [], action.id, action.updates),
         },
       };
+    }
     case "INVALIDATE_CACHE":
       return { ...state, lastFetch: 0 };
     case "SET_LOADING":
@@ -89,33 +90,32 @@ export const OpportunitiesProvider = ({ children }) => {
   const [state, dispatch] = useReducer(opportunitiesReducer, initialState);
   const { isHydrated, token } = useAuth();
 
-  // Track mount/unmount cycle for deduplication cleanup (NOT for guarding fetches)
   const isMountedRef = useRef(true);
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   /**
-   * Fetch opportunities from API
-   * Respects cache duration and uses deduplicator for duplicate prevention
-   * CRITICAL: Does NOT use mount guards - deduplicator handles duplicate requests
+   * Fetch opportunities from API (stable callback; reads latest state via stateRef).
    */
   const fetchOpportunities = useCallback(async (forceRefresh = false) => {
+    const snap = stateRef.current;
     const now = Date.now();
-    const cacheValid = !forceRefresh &&
-                       (now - state.lastFetch < CACHE_DURATION) &&
-                       (state.opportunities.active.length > 0 || state.opportunities.archive.length > 0);
+    const cacheValid =
+      !forceRefresh &&
+      now - snap.lastFetch < CACHE_DURATION &&
+      (snap.opportunities.active.length > 0 || snap.opportunities.archive.length > 0);
 
-    // Return cached data if valid
     if (cacheValid) {
       if (process.env.NODE_ENV === "development") {
         console.log("[OPPORTUNITIES ✓] Using cached data", {
-          active: state.opportunities.active.length,
-          archive: state.opportunities.archive.length,
-          cacheAge: now - state.lastFetch
+          active: snap.opportunities.active.length,
+          archive: snap.opportunities.archive.length,
+          cacheAge: now - snap.lastFetch,
         });
       }
-      return state.opportunities;
+      return snap.opportunities;
     }
 
-    // Use deduplicator to prevent duplicate API calls
     const deduplicateKey = "opportunities_fetch";
 
     try {
@@ -131,7 +131,6 @@ export const OpportunitiesProvider = ({ children }) => {
           api.get("/opportunities/archive", { signal: controller?.signal }),
         ]);
 
-        // Defensive: validate and sanitize API responses
         const active = Array.isArray(extractApiData(activeRes)) ? extractApiData(activeRes) : [];
         const archive = Array.isArray(extractApiData(archiveRes)) ? extractApiData(archiveRes) : [];
 
@@ -139,8 +138,6 @@ export const OpportunitiesProvider = ({ children }) => {
           console.log("[OPPORTUNITIES] Fetch successful", { active: active.length, archive: archive.length });
         }
 
-        // CRITICAL: Only update state if component is still mounted
-        // This prevents stale state updates from aborted StrictMode requests
         if (isMountedRef.current) {
           dispatch({
             type: "SET_OPPORTUNITIES",
@@ -152,25 +149,25 @@ export const OpportunitiesProvider = ({ children }) => {
         return { active, archive };
       });
 
-      return result || state.opportunities;
+      return result || stateRef.current.opportunities;
     } catch (error) {
-      // CRITICAL: Ignore AbortError - it's expected on unmount/remount
-      // Do NOT treat it as a failure that should update state
       if (error.name === "AbortError") {
         if (process.env.NODE_ENV === "development") {
           console.log("[OPPORTUNITIES] Request aborted (expected on unmount/remount)");
         }
-        return state.opportunities;
+        if (isMountedRef.current) {
+          dispatch({ type: "SET_LOADING", loading: false });
+        }
+        return stateRef.current.opportunities;
       }
 
-      // Real errors should only update loading state
       console.error("[OPPORTUNITIES ERROR] Fetch failed:", error.message);
-      dispatch({ type: "SET_LOADING", loading: false });
-
-      // Return current state on error (don't wipe valid data)
-      return state.opportunities;
+      if (isMountedRef.current) {
+        dispatch({ type: "SET_LOADING", loading: false });
+      }
+      return stateRef.current.opportunities;
     }
-  }, [state.lastFetch, state.opportunities]);
+  }, []);
 
   /**
    * After auth hydration, fetch only when an access token exists (avoids 401 race on refresh).

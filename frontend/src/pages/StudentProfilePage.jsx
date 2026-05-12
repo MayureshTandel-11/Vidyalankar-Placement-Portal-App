@@ -1,11 +1,14 @@
 import { useState, useEffect, useRef, Component } from "react";
 import { useNavigate } from "react-router-dom";
-import { AlertTriangle, CheckCircle2 } from "lucide-react";
-import api, { extractApiData, extractApiError } from "../api";
+import toast from "react-hot-toast";
+import { AlertTriangle, CheckCircle2, FileDown } from "lucide-react";
+import api, { extractApiData, extractApiError, getAccessToken } from "../api";
 import Layout from "../components/Layout";
 import Footer from "../components/Footer";
 import StudentProfileForm from "../components/StudentProfileForm";
-import { PrimaryButton, SectionTitle, StatusMessage } from "../components/ui";
+import { PrimaryButton, StatusMessage } from "../components/ui";
+import { useAuth } from "../context/AuthContext";
+import { generateStudentProfilePDF } from "../utils/pdfGenerator";
 
 // Error Boundary Component
 class ProfileErrorBoundary extends Component {
@@ -197,14 +200,23 @@ const BreadcrumbNav = () => (
 // Main Page Component
 const StudentProfilePage = () => {
   const navigate = useNavigate();
+  const { isHydrated, token } = useAuth();
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState(null);
   const [error, setError] = useState("");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [saveAllLoading, setSaveAllLoading] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
   const formRef = useRef(null);
 
-  // Load profile data
+  // Load profile data after auth is hydrated and token is available
   useEffect(() => {
+    if (!isHydrated) return;
+    if (!token && !getAccessToken()) {
+      setLoading(false);
+      return;
+    }
+
     const loadProfile = async () => {
       try {
         const response = await api.get("/student/profile");
@@ -218,7 +230,7 @@ const StudentProfilePage = () => {
     };
 
     loadProfile();
-  }, []);
+  }, [isHydrated, token]);
 
   // Handle unsaved changes warning
   useEffect(() => {
@@ -249,19 +261,48 @@ const StudentProfilePage = () => {
   }, []);
 
   const handleSaveAll = async () => {
-    if (formRef.current?.saveAll) {
+    if (!formRef.current?.saveAll) return;
+    setSaveAllLoading(true);
+    try {
       const success = await formRef.current.saveAll();
       if (success) {
-        // Reload profile data after successful save
         try {
           const response = await api.get("/student/profile");
           const data = extractApiData(response);
           setProfile(data?.profile);
           setHasUnsavedChanges(false);
+          toast.success("Profile saved successfully");
         } catch (err) {
           console.error("Error reloading profile:", err);
+          toast.error("Saved, but failed to refresh profile data");
         }
       }
+    } finally {
+      setSaveAllLoading(false);
+    }
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!profile) {
+      toast.error("Profile not loaded yet");
+      return;
+    }
+    setPdfLoading(true);
+    try {
+      const response = await api.get("/student/profile");
+      const data = extractApiData(response);
+      const latest = data?.profile || profile;
+      generateStudentProfilePDF(latest, latest.studentId);
+      toast.success("Profile PDF downloaded");
+    } catch (e) {
+      try {
+        generateStudentProfilePDF(profile, profile.studentId);
+        toast.success("Profile PDF downloaded");
+      } catch (e2) {
+        toast.error(e2?.message || "Could not generate PDF");
+      }
+    } finally {
+      setPdfLoading(false);
     }
   };
 
@@ -328,9 +369,7 @@ const StudentProfilePage = () => {
 
           {/* Form */}
           {profile && (
-            <div ref={formRef}>
-              <StudentProfileForm ref={formRef} department={profile?.department} onFormChange={handleFormChange} />
-            </div>
+            <StudentProfileForm ref={formRef} department={profile?.department} onFormChange={handleFormChange} />
           )}
 
           {/* Bottom Actions */}
@@ -338,15 +377,30 @@ const StudentProfilePage = () => {
             <div className="text-center text-sm text-slate-600 sm:text-left">
               <p>Use <span className="inline-block rounded bg-slate-100 px-2 py-1 font-mono text-xs">Ctrl+S</span> (Windows) or <span className="inline-block rounded bg-slate-100 px-2 py-1 font-mono text-xs">Cmd+S</span> (Mac) to save</p>
             </div>
-            <div className="flex flex-col gap-2 sm:flex-row">
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
               <button
+                type="button"
                 onClick={() => handleNavigation("/dashboard")}
                 className="rounded-lg border border-slate-300 px-6 py-3 font-medium text-slate-700 hover:bg-slate-50"
               >
                 Back to Dashboard
               </button>
-              <PrimaryButton onClick={handleSaveAll} className="rounded-lg px-6 py-3">
-                Save & Continue
+              <PrimaryButton
+                type="button"
+                onClick={handleDownloadPdf}
+                disabled={pdfLoading || !profile}
+                className="rounded-lg px-6 py-3 inline-flex items-center justify-center gap-2"
+              >
+                <FileDown size={18} />
+                {pdfLoading ? "Preparing PDF…" : "Download profile PDF"}
+              </PrimaryButton>
+              <PrimaryButton
+                type="button"
+                onClick={handleSaveAll}
+                disabled={saveAllLoading}
+                className="rounded-lg px-6 py-3"
+              >
+                {saveAllLoading ? "Saving…" : "Save & Continue"}
               </PrimaryButton>
             </div>
           </div>
