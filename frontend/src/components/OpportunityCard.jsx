@@ -214,7 +214,7 @@ const OpportunityCard = ({
           <div className="flex flex-col xs:flex-row items-start gap-2 xs:gap-3 xs:justify-between">
             <h3 className="clamp-2 text-base sm:text-lg font-semibold leading-6 text-slate-800">{opportunity.announcementHeading}</h3>
             <div className="flex flex-wrap items-center gap-1.5 xs:gap-2 flex-shrink-0">
-              <span className="rounded-full border border-red-200/80 bg-red-50 px-2 xs:px-2.5 py-0.5 xs:py-1 text-xs font-medium text-red-700 whitespace-nowrap">
+              <span className="rounded-full border px-2 xs:px-2.5 py-0.5 xs:py-1 text-xs font-medium text-white whitespace-nowrap" style={{ backgroundColor: "#EA3F55", borderColor: "#EA3F55" }}>
                 {opportunity.type}
               </span>
               <span
