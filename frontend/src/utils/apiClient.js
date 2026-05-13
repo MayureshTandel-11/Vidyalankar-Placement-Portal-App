@@ -107,7 +107,14 @@ api.interceptors.response.use(
     const data = response?.data;
 
     // Handle 401 Unauthorized - attempt token refresh
-    if (status === 401) {
+    if (status === 401 && data?.tokenExpired) { // Backend send data which contains : tokenExpired: boolean value 
+
+      if (config._retry) {
+        return Promise.reject(error);
+      }
+
+      config._retry = true;
+
       console.warn(`[API 401] ${method} ${url}`, data?.message);
 
       // Credential failures must NOT trigger refresh (avoids infinite retry / stuck login)
@@ -119,6 +126,7 @@ api.interceptors.response.use(
       if (skipRefresh) {
         return Promise.reject(error);
       }
+
 
       // Don't refresh if already refreshing
       if (isRefreshing) {

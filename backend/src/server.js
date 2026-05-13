@@ -3,6 +3,7 @@ const cors = require("cors");
 const helmet = require("helmet");
 const mongoSanitize = require("express-mongo-sanitize");
 const dotenv = require("dotenv");
+const cookieParser = require("cookie-parser"); // cookies parser
 const path = require("path");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -24,6 +25,7 @@ const { globalLimiter } = require("./middleware/rateLimiter");
 const { globalErrorHandler, notFoundHandler } = require("./middleware/errorHandler");
 const { validateEnv } = require("./utils/envCheck");
 
+
 // Load environment variables
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 dotenv.config();
@@ -32,6 +34,7 @@ dotenv.config();
 validateEnv();
 
 const app = express();
+
 
 // SECURITY: Trust proxy if behind reverse proxy (e.g., nginx, AWS load balancer)
 app.set("trust proxy", 1);
@@ -63,6 +66,9 @@ app.use(helmet({
   }
 }));
 
+// for parsing cookies
+app.use(cookieParser());
+
 // CORS configuration
 const allowedOrigins = (
   process.env.CLIENT_ORIGIN || "http://localhost:5173,http://127.0.0.1:5173"
@@ -93,6 +99,7 @@ app.use(express.json({ limit: "5mb" }));
 // Serve uploaded resume files as static assets (for direct URL access)
 // Files are stored at backend/uploads/resumes/ and accessible at /uploads/resumes/<filename>
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
+
 
 
 // SECURITY: Global rate limiting (100 requests per 15 minutes per IP)
