@@ -149,7 +149,7 @@ const ProfileProgressIndicator = ({ profile }) => {
         </div>
         <div className="flex items-center gap-2">
           <div className={`h-2 w-2 rounded-full ${profile?.technicalSkills?.length > 0 ? "bg-emerald-500" : "bg-slate-300"}`} />
-          <span className="text-slate-700">Technical Skills (Required) - 25%</span>
+          <span className="text-slate-700"> Skills (Required) - 25%</span>
         </div>
         <div className="flex items-center gap-2">
           <div className={`h-2 w-2 rounded-full ${profile?.professionalLinks?.linkedinProfile || profile?.professionalLinks?.githubProfile ? "bg-emerald-500" : "bg-slate-300"}`} />
@@ -385,7 +385,7 @@ const StudentProfilePage = () => {
               >
                 Back to Dashboard
               </button>
-              <PrimaryButton
+              {/* <PrimaryButton
                 type="button"
                 onClick={handleDownloadPdf}
                 disabled={pdfLoading || !profile}
@@ -393,7 +393,7 @@ const StudentProfilePage = () => {
               >
                 <FileDown size={18} />
                 {pdfLoading ? "Preparing PDF…" : "Download profile PDF"}
-              </PrimaryButton>
+              </PrimaryButton> */}
               <PrimaryButton
                 type="button"
                 onClick={handleSaveAll}

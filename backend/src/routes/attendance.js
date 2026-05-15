@@ -25,7 +25,12 @@ const blockFacultyWithoutOpportunityAccess = (req, res, opportunity) => {
 const isGeneralUpdate = (stage) => stage?.toLowerCase() === "general update";
 
 // ======================================
-// HELPER: Validate stage (reject General Update)
+// HELPER: Check if stage is Result stage
+// ======================================
+const isResultStage = (stage) => stage?.toLowerCase() === "result";
+
+// ======================================
+// HELPER: Validate stage (reject General Update and Result)
 // ======================================
 const validateStageNotGeneralUpdate = (stage) => {
   if (isGeneralUpdate(stage)) {
@@ -40,9 +45,43 @@ const validateStageNotGeneralUpdate = (stage) => {
   return { isValid: true };
 };
 
+// ======================================
+// HELPER: Validate stage for attendance operations
+// Rejects both General Update and Result stage
+// ======================================
+const validateStageForAttendance = (stage) => {
+  // Check for General Update
+  if (isGeneralUpdate(stage)) {
+    return {
+      isValid: false,
+      error: {
+        status: 400,
+        message: "Attendance is not applicable for General Update stage"
+      }
+    };
+  }
+
+  // Check for Result stage - NO attendance tracking for final result
+  if (isResultStage(stage)) {
+    return {
+      isValid: false,
+      error: {
+        status: 400,
+        message: "Attendance tracking is not applicable for the Result stage. Result stage only supports final declaration (Selected/Rejected)."
+      }
+    };
+  }
+
+  return { isValid: true };
+};
+
 // GET /api/attendance/:opportunityId/:stage
 // Faculty and Admin only - get attendance list for a specific stage
 // Allows viewing both active stages (for editing) and closed/archived stages (for historical viewing)
+//
+// CRITICAL FIX: Only returns attendance for explicitly selected students
+// - First stage (Aptitude Test): Returns all applicants
+// - Subsequent stages: ONLY returns students selected in previous stage
 router.get("/:opportunityId/:stage", protect, allowRoles("faculty", "admin"), async (req, res) => {
   try {
     const { opportunityId, stage } = req.params;
@@ -85,6 +124,35 @@ router.get("/:opportunityId/:stage", protect, allowRoles("faculty", "admin"), as
       absentCount: 0,
     };
 
+    // ===== CRITICAL VALIDATION: Filter attendance based on selection status =====
+    const RECRUITMENT_STAGE_ORDER = ["Aptitude Test", "Group Discussion", "Technical Interview", "HR Interview", "Result"];
+    const stageIndex = RECRUITMENT_STAGE_ORDER.indexOf(stage);
+
+    // For non-first stages, build filter to only include selected students
+    let selectionFilterSet = null;
+    if (stageIndex > 0) {
+      // This is a subsequent stage - must check previous stage selections
+      const prevStage = RECRUITMENT_STAGE_ORDER[stageIndex - 1];
+      const manual = opportunity.stageManualSelections?.find((s) => s.stage === prevStage);
+
+      if (manual?.selectedStudentIds?.length > 0) {
+        // Only include selected students
+        selectionFilterSet = new Set(manual.selectedStudentIds.map((id) => String(id).trim()));
+      } else {
+        // No selection in previous stage - return empty list
+        console.warn(
+          `[ATTENDANCE VALIDATION] No manual selection found for ${prevStage}`,
+          `Returning empty attendance list for ${stage} to prevent unselected students`
+        );
+        return res.status(200).json({
+          data: [],
+          stageStatus,
+          message: "No attendance records (no students selected for this stage)",
+          validationNote: `Stage ${stage} has no selected applicants from ${prevStage}`,
+        });
+      }
+    }
+
     // Fetch attendance records for this stage
     const attendanceRecords = await OpportunityAttendance.find({
       opportunityId: new mongoose.Types.ObjectId(opportunityId),
@@ -108,7 +176,7 @@ router.get("/:opportunityId/:stage", protect, allowRoles("faculty", "admin"), as
     }
 
     // Combine attendance records with applicant information
-    const attendanceList = attendanceRecords.map((record) => ({
+    let attendanceList = attendanceRecords.map((record) => ({
       ...record,
       studentId: applicantMap[record.studentId] || {
         _id: record.studentId,
@@ -119,6 +187,21 @@ router.get("/:opportunityId/:stage", protect, allowRoles("faculty", "admin"), as
       },
     }));
 
+    // ===== DEFENSIVE FILTERING: Remove unselected students for non-first stages =====
+    if (selectionFilterSet && stageIndex > 0) {
+      const originalCount = attendanceList.length;
+      attendanceList = attendanceList.filter((record) =>
+        selectionFilterSet.has(String(record.studentId?.studentId || record.studentId?._id || "").trim())
+      );
+
+      if (attendanceList.length < originalCount) {
+        console.warn(
+          `[ATTENDANCE FILTER] Removed unselected students from attendance list`,
+          { stage, stageIndex, originalCount, filteredCount: attendanceList.length, removed: originalCount - attendanceList.length }
+        );
+      }
+    }
+
     // Sort alphabetically by student name (A-Z)
     attendanceList.sort((a, b) =>
       (a.studentId?.name || "Unknown").localeCompare(b.studentId?.name || "Unknown", "en", { sensitivity: "base" })
@@ -128,6 +211,7 @@ router.get("/:opportunityId/:stage", protect, allowRoles("faculty", "admin"), as
       data: attendanceList || [],
       stageStatus,
       message: "Attendance list fetched successfully",
+      stageMeta: { stageIndex, isFirstStage: stageIndex === 0 },
     });
   } catch (error) {
     console.error("[ATTENDANCE GET ERROR]", {
@@ -146,13 +230,14 @@ router.get("/:opportunityId/:stage", protect, allowRoles("faculty", "admin"), as
 
 // PATCH /api/attendance/:opportunityId
 // Faculty and Admin only - mark attendance for a student
+// ⛔ NOT APPLICABLE FOR RESULT STAGE
 router.patch("/:opportunityId", protect, allowRoles("faculty", "admin"), async (req, res) => {
   try {
     const { opportunityId } = req.params;
     const { studentId, stage, status } = req.body;
 
-    // Validate stage is not General Update
-    const stageValidation = validateStageNotGeneralUpdate(stage);
+    // Validate stage - reject both General Update AND Result stage
+    const stageValidation = validateStageForAttendance(stage);
     if (!stageValidation.isValid) {
       return res.status(stageValidation.error.status).json({
         success: false,
@@ -271,12 +356,13 @@ router.get("/:opportunityId/student/:studentId", protect, async (req, res) => {
 
 // POST /api/attendance/submit
 // Faculty and Admin only - submit final attendance for a stage
+// ⛔ NOT APPLICABLE FOR RESULT STAGE
 router.post("/submit/:opportunityId/:stage", protect, allowRoles("faculty", "admin"), async (req, res) => {
   try {
     const { opportunityId, stage } = req.params;
 
-    // Validate stage is not General Update
-    const stageValidation = validateStageNotGeneralUpdate(stage);
+    // Validate stage - reject both General Update AND Result stage
+    const stageValidation = validateStageForAttendance(stage);
     if (!stageValidation.isValid) {
       return res.status(stageValidation.error.status).json({
         success: false,
@@ -407,6 +493,8 @@ router.post("/submit/:opportunityId/:stage", protect, allowRoles("faculty", "adm
 // - Works for both active and closed stages
 // - Only admin/faculty can download
 // - General Update stage is not allowed
+//
+// CRITICAL: Only downloads attendance for explicitly selected students (except first stage)
 router.get("/download/:opportunityId/:stage", protect, allowRoles("faculty", "admin"), async (req, res) => {
   try {
     const { opportunityId, stage } = req.params;
@@ -439,6 +527,28 @@ router.get("/download/:opportunityId/:stage", protect, allowRoles("faculty", "ad
       return res.status(403).json({ message: "Attendance for this stage has not been submitted yet" });
     }
 
+    // ===== CRITICAL VALIDATION: Filter attendance based on selection status =====
+    const RECRUITMENT_STAGE_ORDER = ["Aptitude Test", "Group Discussion", "Technical Interview", "HR Interview", "Result"];
+    const stageIndex = RECRUITMENT_STAGE_ORDER.indexOf(stage);
+
+    // For non-first stages, build filter to only include selected students
+    let selectionFilterSet = null;
+    if (stageIndex > 0) {
+      // This is a subsequent stage - must check previous stage selections
+      const prevStage = RECRUITMENT_STAGE_ORDER[stageIndex - 1];
+      const manual = opportunity.stageManualSelections?.find((s) => s.stage === prevStage);
+
+      if (manual?.selectedStudentIds?.length > 0) {
+        // Only include selected students
+        selectionFilterSet = new Set(manual.selectedStudentIds.map((id) => String(id).trim()));
+      } else {
+        // No selection in previous stage - return error
+        return res.status(403).json({
+          message: `Cannot download attendance for ${stage} - no students were selected for this stage from ${prevStage}`
+        });
+      }
+    }
+
     // Fetch all attendance records for this stage
     const attendanceRecords = await OpportunityAttendance.find({
       opportunityId: new mongoose.Types.ObjectId(opportunityId),
@@ -460,7 +570,7 @@ router.get("/download/:opportunityId/:stage", protect, allowRoles("faculty", "ad
     }
 
     // Enrich attendance records with applicant info
-    const enrichedRecords = attendanceRecords.map((record) => ({
+    let enrichedRecords = attendanceRecords.map((record) => ({
       ...record.toObject?.() || record,
       studentId: applicantMap[record.studentId] || {
         _id: record.studentId,
@@ -470,6 +580,21 @@ router.get("/download/:opportunityId/:stage", protect, allowRoles("faculty", "ad
         department: "N/A",
       },
     }));
+
+    // ===== DEFENSIVE FILTERING: Remove unselected students for non-first stages =====
+    if (selectionFilterSet && stageIndex > 0) {
+      const originalCount = enrichedRecords.length;
+      enrichedRecords = enrichedRecords.filter((record) =>
+        selectionFilterSet.has(String(record.studentId?.studentId || record.studentId?._id || "").trim())
+      );
+
+      if (enrichedRecords.length < originalCount) {
+        console.warn(
+          `[ATTENDANCE DOWNLOAD FILTER] Removed unselected students from CSV`,
+          { stage, stageIndex, originalCount, filteredCount: enrichedRecords.length, removed: originalCount - enrichedRecords.length }
+        );
+      }
+    }
 
     // Sort by student name
     enrichedRecords.sort((a, b) =>
@@ -513,6 +638,7 @@ router.get("/download/:opportunityId/:stage", protect, allowRoles("faculty", "ad
 
 // POST /api/attendance/select-next-round/:opportunityId/:stage
 // Faculty and Admin only - select students for next round
+// ⛔ NOT APPLICABLE FOR RESULT STAGE
 // This endpoint:
 // 1. Marks attendance as submitted (if not already)
 // 2. Stores selected students in stages tracking
@@ -523,8 +649,8 @@ router.post("/select-next-round/:opportunityId/:stage", protect, allowRoles("fac
     const { opportunityId, stage } = req.params;
     const { selectedStudentIds = [] } = req.body;
 
-    // Validate stage is not General Update
-    const stageValidation = validateStageNotGeneralUpdate(stage);
+    // Validate stage - reject both General Update AND Result stage
+    const stageValidation = validateStageForAttendance(stage);
     if (!stageValidation.isValid) {
       return res.status(stageValidation.error.status).json({
         success: false,
@@ -597,8 +723,27 @@ router.post("/select-next-round/:opportunityId/:stage", protect, allowRoles("fac
     const currentStageIndex = stageOrder.indexOf(stage);
     const nextStage = currentStageIndex < stageOrder.length - 1 ? stageOrder[currentStageIndex + 1] : "Result";
 
+    // FIX ISSUE 2: Create attendance map for status validation
+    // Prevents absent/pending students from receiving timeline updates
+    const attendanceMap = {};
+    attendanceRecords.forEach((record) => {
+      attendanceMap[record.studentId] = record.status;
+    });
+
     for (const studentId of selectedStudentIds) {
       try {
+        // FIX ISSUE 2: Verify student has "present" status before creating timeline/notification
+        // CRITICAL: Blocks timeline updates for absent/pending students
+        const attendanceStatus = attendanceMap[studentId];
+        if (attendanceStatus !== "present") {
+          console.warn(
+            `[SELECT NEXT ROUND SKIP] Student ${studentId} has status '${attendanceStatus}', skipping notification.`,
+            `Only students marked 'present' can advance. Prevented from receiving timeline update.`,
+            { opportunityId, stage, studentId, actualStatus: attendanceStatus }
+          );
+          continue; // Skip notification for non-present students - ISSUE 2 FIX
+        }
+
         // Find student user
         const student = await User.findOne({ studentId });
         if (student) {
@@ -623,9 +768,11 @@ router.post("/select-next-round/:opportunityId/:stage", protect, allowRoles("fac
             });
           }
 
-          // Create timeline entry
+          // FIX ISSUE 2: Create timeline entry with studentId tracking
+          // Allows per-student timeline filtering and prevents duplicate notifications
           await OpportunityTimeline.create({
             opportunityId: new mongoose.Types.ObjectId(opportunityId),
+            studentId: String(studentId).trim(),  // FIX ISSUE 2: Track which student received this notification
             postedBy: req.user._id,
             role: req.user.role,
             stage: nextStage,
@@ -674,6 +821,7 @@ router.post("/select-next-round/:opportunityId/:stage", protect, allowRoles("fac
 
 // POST /api/attendance/manual-select/:opportunityId/:stage
 // Faculty and Admin only - manually select students after attendance submission
+// ⛔ NOT APPLICABLE FOR RESULT STAGE
 // Requirements:
 // - Attendance must be submitted for this stage
 // - Cannot select absent students
@@ -683,8 +831,8 @@ router.post("/manual-select/:opportunityId/:stage", protect, allowRoles("faculty
     const { opportunityId, stage } = req.params;
     const { selectedStudentIds = [] } = req.body;
 
-    // Validate stage is not General Update
-    const stageValidation = validateStageNotGeneralUpdate(stage);
+    // Validate stage - reject both General Update AND Result stage
+    const stageValidation = validateStageForAttendance(stage);
     if (!stageValidation.isValid) {
       return res.status(stageValidation.error.status).json({
         success: false,
@@ -809,6 +957,17 @@ router.post("/manual-select/:opportunityId/:stage", protect, allowRoles("faculty
         const studentUser = await User.findOne({ studentId: sid });
         if (!studentUser) continue;
 
+        // ISSUE 3 FIX: Verify student has SELECTED status before creating timeline
+        // Students must be marked present (attended the stage) to be eligible for selection
+        const attendanceRecord = attendanceMap[sid];
+        if (attendanceRecord !== "present") {
+          console.warn(
+            `[MANUAL SELECT TIMELINE SKIP] Student ${sid} has status '${attendanceRecord}', not 'present'. Skipping timeline creation.`,
+            { opportunityId, stage, studentId: sid }
+          );
+          continue; // Skip timeline creation for non-present students
+        }
+
         const message = `Congratulations! You have been selected for the next round (${nextRoundName}) for ${companyName}.`;
         await Notification.create({
           studentId: studentUser._id,
@@ -828,8 +987,30 @@ router.post("/manual-select/:opportunityId/:stage", protect, allowRoles("faculty
           });
         }
 
+        // FIX ISSUE 1 & 2: Prevent duplicate timeline entries
+        // Per-student duplicate check - allows different students to receive their own congratulation messages
+        // Uses studentId to prevent duplicate congratulations for the SAME student
+        const existingTimeline = await OpportunityTimeline.findOne({
+          opportunityId: new mongoose.Types.ObjectId(opportunityId),
+          studentId: String(sid).trim(),  // FIX ISSUE 1: Per-student check instead of stage-level
+          stage: nextRoundName,
+          comment: { $regex: "Congratulations! You have been selected for the next round" },
+        });
+
+        if (existingTimeline) {
+          console.log(
+            `[MANUAL SELECT DUPLICATE CHECK] Timeline entry already exists for student ${sid} in stage ${nextRoundName}.`,
+            `Skipping duplicate notification.`,
+            { opportunityId, stage, nextRoundName, studentId: sid, existingId: existingTimeline._id }
+          );
+          continue; // Skip if congratulations message already exists for THIS STUDENT
+        }
+
+        // FIX ISSUE 2: Create timeline entry with studentId tracking
+        // Enables per-student timeline filtering and prevents future duplicate issues
         await OpportunityTimeline.create({
           opportunityId: new mongoose.Types.ObjectId(opportunityId),
+          studentId: String(sid).trim(),  // FIX ISSUE 2: Track which student received this notification
           postedBy: req.user._id,
           role: req.user.role,
           stage: nextRoundName,

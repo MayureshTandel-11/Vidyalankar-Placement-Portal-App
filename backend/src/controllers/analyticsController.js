@@ -53,33 +53,61 @@ const getStudentAnalytics = async (req, res) => {
           studentId,
         }).lean();
 
-        // Map stages to progress
+        // ===== CRITICAL VALIDATION: Filter stages based on selection status =====
+        // For stage N, student must have been selected in stage N-1
+        // Get manual selections to determine eligible stages
+        const stageManualSelections = opp.stageManualSelections || [];
+        const STAGE_ORDER = ["Aptitude Test", "Group Discussion", "Technical Interview", "HR Interview", "Result"];
+
+        // Determine which stages student is eligible for
+        const eligibleStages = new Set(["Aptitude Test"]); // Always eligible for first stage
+        for (let i = 1; i < STAGE_ORDER.length; i++) {
+          const prevStage = STAGE_ORDER[i - 1];
+          const prevSelection = stageManualSelections.find((s) => s.stage === prevStage);
+          if (prevSelection?.selectedStudentIds?.includes(studentId)) {
+            eligibleStages.add(STAGE_ORDER[i]);
+          }
+        }
+
+        // Map stages to progress (only show eligible stages)
         const stageProgress = {};
         const stages = ["Aptitude Test", "Group Discussion", "Technical Interview", "HR Interview"];
 
         for (const stage of stages) {
-          const record = attendanceRecords.find((r) => r.stage === stage);
-          if (record) {
-            stageProgress[stage] = record.status; // present, absent, or pending
+          // Only process if eligible for this stage
+          if (eligibleStages.has(stage)) {
+            const record = attendanceRecords.find((r) => r.stage === stage);
+            if (record) {
+              stageProgress[stage] = record.status; // present, absent, or pending
+            } else {
+              stageProgress[stage] = "not-attended"; // Not reached yet
+            }
           } else {
-            stageProgress[stage] = "not-attended"; // Not reached yet
+            // Not eligible for this stage (wasn't selected in previous round)
+            stageProgress[stage] = "not-eligible";
           }
         }
 
-        // Check result
+        // Check result (only if eligible)
         const resultRecord = attendanceRecords.find((r) => r.stage === "Result");
-        if (resultRecord) {
+        if (resultRecord && eligibleStages.has("Result")) {
           stageProgress.Result = resultRecord.status;
+        } else if (eligibleStages.has("Result")) {
+          stageProgress.Result = "not-attended";
+        } else {
+          stageProgress.Result = "not-eligible";
         }
 
-        // Determine highest stage reached
+        // Determine highest stage reached (only among eligible stages)
         let highestStageCleared = "Applied";
         for (const stage of stages) {
-          if (stageProgress[stage] === "present") {
-            highestStageCleared = stage;
-          } else if (stageProgress[stage] === "absent") {
-            highestStageCleared = `Rejected in ${stage}`;
-            break;
+          if (eligibleStages.has(stage)) {
+            if (stageProgress[stage] === "present") {
+              highestStageCleared = stage;
+            } else if (stageProgress[stage] === "absent") {
+              highestStageCleared = `Rejected in ${stage}`;
+              break;
+            }
           }
         }
 
@@ -92,6 +120,7 @@ const getStudentAnalytics = async (req, res) => {
           appliedDate: opp.lastDate,
           stageProgress,
           highestStageCleared,
+          eligibleStagesCount: eligibleStages.size,
         };
       })
     );
@@ -145,6 +174,8 @@ const getStudentAnalytics = async (req, res) => {
  * Get opportunity details for a student
  * Shows attendance status and rounds cleared/rejected
  * GET /api/student/analytics/opportunity/:opportunityId/:studentId
+ *
+ * CRITICAL: Only shows stages student is eligible for (i.e., selected in previous round)
  */
 const getOpportunityAnalytics = async (req, res) => {
   try {
@@ -175,23 +206,49 @@ const getOpportunityAnalytics = async (req, res) => {
       studentId,
     }).lean();
 
-    // Build stage progress
+    // ===== CRITICAL VALIDATION: Determine eligible stages =====
+    // Student is only eligible for stages where they were selected in previous round
+    const stageManualSelections = opportunity.stageManualSelections || [];
+    const STAGE_ORDER = ["Aptitude Test", "Group Discussion", "Technical Interview", "HR Interview", "Result"];
+
+    const eligibleStages = new Set(["Aptitude Test"]); // Always eligible for first stage
+    for (let i = 1; i < STAGE_ORDER.length; i++) {
+      const prevStage = STAGE_ORDER[i - 1];
+      const prevSelection = stageManualSelections.find((s) => s.stage === prevStage);
+      if (prevSelection?.selectedStudentIds?.includes(studentId)) {
+        eligibleStages.add(STAGE_ORDER[i]);
+      }
+    }
+
+    // Build stage progress (only for eligible stages)
     const stageProgress = [];
     const stages = ["Aptitude Test", "Group Discussion", "Technical Interview", "HR Interview", "Result"];
 
     for (const stage of stages) {
-      const record = attendanceRecords.find((r) => r.stage === stage);
-      stageProgress.push({
-        stage,
-        status: record ? record.status : "not-attended",
-        markedAt: record ? record.markedAt : null,
-      });
+      if (eligibleStages.has(stage)) {
+        const record = attendanceRecords.find((r) => r.stage === stage);
+        stageProgress.push({
+          stage,
+          status: record ? record.status : "not-attended",
+          markedAt: record ? record.markedAt : null,
+          eligible: true,
+        });
+      } else {
+        // Not eligible - show as not-eligible instead of not-attended
+        stageProgress.push({
+          stage,
+          status: "not-eligible",
+          markedAt: null,
+          eligible: false,
+          reason: "Not selected in previous round",
+        });
+      }
     }
 
-    // Find rejection round if any
+    // Find rejection round if any (only among eligible stages)
     let rejectionRound = null;
     for (const record of attendanceRecords) {
-      if (record.status === "absent") {
+      if (record.status === "absent" && eligibleStages.has(record.stage)) {
         rejectionRound = record.stage;
         break;
       }
@@ -207,6 +264,7 @@ const getOpportunityAnalytics = async (req, res) => {
         },
         stageProgress,
         rejectionRound,
+        eligibleStagesCount: eligibleStages.size,
       },
       message: "Opportunity analytics fetched successfully",
     });

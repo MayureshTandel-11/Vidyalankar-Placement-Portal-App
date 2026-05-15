@@ -306,7 +306,7 @@ const OpportunityForm = ({
 
         {/* Full Width - Technical Skills */}
         <div className="md:col-span-2">
-          <span className="label-modern text-sm mb-3 block">Technical Skills (Optional)</span>
+          <span className="label-modern text-sm mb-3 block">Skills (Optional)</span>
 
           {/* Skill Input */}
           <div className="flex gap-2 mb-4">

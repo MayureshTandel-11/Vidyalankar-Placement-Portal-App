@@ -3,11 +3,12 @@ import { useNavigate } from "react-router-dom";
 
 
 import { motion as Motion } from "framer-motion";
-import { Building2, CalendarClock, ExternalLink, GraduationCap, Pencil, Sparkles, Trash2, Badge, FileText, User, Clock, Code, Calendar, Mail, AlertTriangle, X } from "lucide-react";
+import { Building2, CalendarClock, ExternalLink, GraduationCap, Pencil, Sparkles, Trash2, Badge, FileText, User, Clock, Code, Calendar, Mail, AlertTriangle, X, Download } from "lucide-react";
 import { Modal, PrimaryButton, EmptyState, Spinner, StatusMessage } from "./ui";
 import { DEPARTMENTS, OPPORTUNITY_BROADCAST_ALL } from "../constants/departments";
 import { useAuth } from "../context/AuthContext";
 import { useOpportunities } from "../context/OpportunitiesContext";
+import api from "../api";
 import { getSocket } from "../utils/socket";
 import { facultyCanCollaborateOnOpportunity, facultyCanDeleteOpportunity } from "../utils/opportunityDepartment";
 import OpportunityTimeline from "./OpportunityTimeline";
@@ -70,6 +71,7 @@ const OpportunityCard = ({
   const [applicants, setApplicants] = useState([]);
   const [applicantsLoading, setApplicantsLoading] = useState(false);
   const [applicantsError, setApplicantsError] = useState("");
+  const [applicantsDownloading, setApplicantsDownloading] = useState(false);
   const [timelineRefreshKey, setTimelineRefreshKey] = useState(0);
   const [attendanceRefreshKey, setAttendanceRefreshKey] = useState(0);
   const [applicantsRefreshKey, setApplicantsRefreshKey] = useState(0);
@@ -123,6 +125,48 @@ const OpportunityCard = ({
       setApplicantsLoading(false);
     }
   }, [opportunity?._id, shouldShowApplicants]);
+
+  // Function to download applicants list as CSV
+  const handleDownloadApplicants = useCallback(async () => {
+    if (!opportunity?._id) return;
+    setApplicantsDownloading(true);
+    setApplicantsError("");
+    try {
+      // Use authenticated Axios client with automatic token injection and refresh handling
+      const response = await api.get(`/opportunities/${opportunity._id}/applicants/download`, {
+        responseType: "blob",
+      });
+
+      // Create blob and download
+      const blob = new Blob([response.data], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+
+      // Generate filename from response headers or use default
+      const contentDisposition = response.headers["content-disposition"];
+      let filename = `applicants_${opportunity.announcementHeading?.replace(/\s+/g, "_")}.csv` || "applicants.csv";
+
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+        if (filenameMatch) {
+          filename = filenameMatch[1];
+        }
+      }
+
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      const errorMessage = err.response?.data?.message || err.message || "Failed to download applicants. Please try again.";
+      setApplicantsError(errorMessage);
+      console.error("[DOWNLOAD APPLICANTS ERROR]", err);
+    } finally {
+      setApplicantsDownloading(false);
+    }
+  }, [opportunity?._id, opportunity?.announcementHeading]);
 
   useEffect(() => {
     if (!isOpen || !opportunity?._id || !socket) return;
@@ -555,7 +599,7 @@ const OpportunityCard = ({
           {/* Applicants Tab */}
           {activeTab === "applicants" && (
             <div className="space-y-4">
-              <div className="flex justify-between items-center">
+              <div className="flex justify-between items-center flex-wrap gap-3">
                 <div>
                   <h3 className="text-base sm:text-lg font-semibold text-slate-800 mb-1">
                     Applicants ({applicants.length})
@@ -564,13 +608,25 @@ const OpportunityCard = ({
                     Total applications for this opportunity
                   </p>
                 </div>
-                <button
-                  onClick={refreshApplicants}
-                  className="text-indigo-600 hover:text-indigo-700 text-sm font-medium"
-                  disabled={applicantsLoading}
-                >
-                  {applicantsLoading ? "Refreshing..." : "Refresh"}
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleDownloadApplicants}
+                    className="flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 bg-green-50 hover:bg-green-100 border border-green-200 text-green-700 hover:text-green-800 text-xs sm:text-sm font-medium rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={applicantsDownloading || applicants.length === 0}
+                    title="Download applicants list as CSV"
+                  >
+                    <Download size={16} />
+                    <span className="hidden sm:inline">{applicantsDownloading ? "Downloading..." : "Download"}</span>
+                    <span className="sm:hidden">{applicantsDownloading ? "..." : "CSV"}</span>
+                  </button>
+                  <button
+                    onClick={refreshApplicants}
+                    className="text-indigo-600 hover:text-indigo-700 text-xs sm:text-sm font-medium px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg hover:bg-indigo-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={applicantsLoading}
+                  >
+                    {applicantsLoading ? "Refreshing..." : "Refresh"}
+                  </button>
+                </div>
               </div>
 
               {applicantsLoading ? (

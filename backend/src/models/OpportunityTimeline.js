@@ -8,6 +8,13 @@ const opportunityTimelineSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    // FIX ISSUE 1: Added studentId to enable per-student duplicate detection for Result stage
+    // Allows tracking which student received a final result comment
+    studentId: {
+      type: String,
+      index: true,
+      default: null,  // null for general stage activation entries, populated for student-specific entries
+    },
     postedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -49,5 +56,7 @@ const opportunityTimelineSchema = new mongoose.Schema(
 );
 
 opportunityTimelineSchema.index({ opportunityId: 1, createdAt: -1 });
+// FIX ISSUE 1: Added compound index for per-student Result stage duplicate detection
+opportunityTimelineSchema.index({ opportunityId: 1, studentId: 1, stage: 1 });
 
 module.exports = mongoose.model("OpportunityTimeline", opportunityTimelineSchema);

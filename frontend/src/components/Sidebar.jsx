@@ -7,7 +7,7 @@ const roleItems = {
     { label: "Dashboard", to: "/dashboard", icon: LayoutDashboard },
     { label: "My Profile", to: "/student/profile", icon: FileText },
     { label: "Opportunities", to: "/opportunities", icon: BriefcaseBusiness },
-    { label: "Notifications", to: "/notifications", icon: Users },
+    // { label: "Notifications", to: "/notifications", icon: Users },
     { label: "Profile", to: "/profile", icon: UserRound },
   ],
   Faculty: [

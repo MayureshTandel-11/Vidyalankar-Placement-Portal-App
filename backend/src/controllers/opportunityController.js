@@ -12,6 +12,7 @@ const {
   canFacultyDeleteOpportunity,
   canFacultyEditOpportunityContent,
 } = require("../utils/opportunityAccess");
+const { generateApplicantsCSV, generateApplicantsFilename } = require("../utils/csvExport");
 
 
 const deriveStatusFromLastDate = (lastDate) => {
@@ -842,6 +843,56 @@ const getStageSelections = async (req, res) => {
   }
 };
 
+/**
+ * Download applicants list as CSV
+ * Accessible by admin and faculty collaborators
+ */
+const downloadApplicants = async (req, res) => {
+  try {
+    // Validate ObjectId format
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return fail(res, 400, "Invalid opportunity ID format");
+    }
+
+    const opportunity = await Opportunity.findById(req.params.id);
+    if (!opportunity) {
+      return fail(res, 404, "Opportunity not found");
+    }
+
+    // Check faculty authorization
+    if (req.user.role === "faculty" && !canFacultyCollaborateOnOpportunity(req.user, opportunity)) {
+      return fail(res, 403, "Access denied. You can only download applicants for opportunities you created or collaborate on.");
+    }
+
+    // Prepare applicants data
+    const applicants = opportunity.applications.map(app => ({
+      _id: app._id,
+      appliedAt: app.appliedAt,
+      student: {
+        name: app.studentName,
+        email: app.studentEmail,
+        studentId: app.studentId,
+        department: app.studentDepartment,
+        year: app.studentYear
+      }
+    }));
+
+    // Generate CSV
+    const csvContent = generateApplicantsCSV(applicants, opportunity.announcementHeading);
+    const filename = generateApplicantsFilename(opportunity.announcementHeading);
+
+    // Set response headers for file download
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Cache-Control', 'no-cache');
+
+    return res.send(csvContent);
+  } catch (error) {
+    console.error("[DOWNLOAD APPLICANTS ERROR]", error);
+    return fail(res, 500, "Failed to download applicants", error.message);
+  }
+};
+
 module.exports = {
   listOpportunities,
   getOpportunityById,
@@ -853,6 +904,7 @@ module.exports = {
   applyToOpportunity,
   getApplicantsCount,
   getApplicants,
+  downloadApplicants,
   getOpportunityApplications,
   saveStageSelections,
   getStageSelections,

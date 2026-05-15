@@ -168,6 +168,51 @@ const stageOrder = [
 
   const isFacultyOrAdmin = userRole === "faculty" || userRole === "admin";
 
+  /**
+   * ROLE-BASED FILTERING: Filter timeline entries based on user role
+   * Students see all timeline entries
+   * Faculty/Admin should NOT see student-specific congratulation messages
+   * These are created when faculty/admin manually select students for next round
+   */
+  const getFilteredTimelineEntries = () => {
+    if (!Array.isArray(timelineEntries)) {
+      return [];
+    }
+
+    if (userRole === "student") {
+      // Students see all entries
+      return timelineEntries;
+    }
+
+    if (isFacultyOrAdmin) {
+      // Faculty/Admin: Hide student-specific congratulation messages
+      return timelineEntries.filter((entry) => {
+        const isStudentCongratulation =
+          entry.comment &&
+          entry.comment.includes("Congratulations! You have been selected for the next round");
+        return !isStudentCongratulation;
+      });
+    }
+
+    return timelineEntries;
+  };
+
+  /**
+   * ISSUE 2 FIX: Check if Result stage already has a comment/result
+   * Result stage only allows ONE final comment per opportunity
+   * Once a result is posted, no further comments are allowed
+   */
+  const hasResultStageComment = () => {
+    if (!Array.isArray(timelineEntries)) return false;
+    return timelineEntries.some((entry) => entry.stage === "Result");
+  };
+
+  const resultStageCommentExists = hasResultStageComment();
+  const isResultStageSelected = selectedStage === "Result";
+  const canPostComment = !isResultStageSelected || !resultStageCommentExists;
+
+  const filteredEntries = getFilteredTimelineEntries();
+
   return (
     <div className="space-y-6">
       {error && (
@@ -244,11 +289,17 @@ const stageOrder = [
                 onChange={(e) => setNewComment(e.target.value)}
                 placeholder="Add your update here..."
                 rows="3"
-                className="w-full rounded-lg border border-[#B70D23] bg-white px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#B70D23]"
+                disabled={!canPostComment}
+                className="w-full rounded-lg border border-[#B70D23] bg-white px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#B70D23] disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
               />
+              {isResultStageSelected && resultStageCommentExists && (
+                <p className="mt-2 text-xs text-amber-600 font-medium">
+                  ⚠️ Result stage already has a final comment. Only one result comment is allowed per opportunity.
+                </p>
+              )}
             </div>
 
-            {selectedStage && selectedStage !== "General Update" && (
+            {selectedStage && selectedStage !== "General Update" && selectedStage !== "Result" && (
               <div className="flex items-center gap-2 rounded-lg bg-white/50 p-3 border border-[#B70D23]/20">
                 <input
                   type="checkbox"
@@ -265,13 +316,15 @@ const stageOrder = [
 
             <button
               onClick={handlePostUpdate}
-              disabled={isPosting}
+              disabled={isPosting || !canPostComment}
               className="w-full rounded-lg bg-[#B70D23] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#8B0A1A] disabled:bg-[#D9394A] disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {isPosting ? (
                 <>
                   <Spinner size="sm" /> Posting...
                 </>
+              ) : !canPostComment ? (
+                "Result comment already posted"
               ) : (
                 "Post Update"
               )}
@@ -286,15 +339,15 @@ const stageOrder = [
           <div className="flex justify-center py-8">
             <Spinner />
           </div>
-        ) : !Array.isArray(timelineEntries) || timelineEntries.length === 0 ? (
+        ) : !Array.isArray(filteredEntries) || filteredEntries.length === 0 ? (
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-6 text-center">
             <MessageSquare size={20} className="mx-auto mb-2 text-slate-400" />
             <p className="text-sm text-slate-600">
-              {Array.isArray(timelineEntries) ? 'No updates yet' : 'Invalid timeline data'}
+              {Array.isArray(filteredEntries) ? 'No updates yet' : 'Invalid timeline data'}
             </p>
           </div>
         ) : (
-          [...timelineEntries].reverse().map((entry, idx) => (
+          [...filteredEntries].reverse().map((entry, idx) => (
             <div key={idx} className="rounded-lg border border-slate-200 bg-white p-4 hover:shadow-md transition-shadow">
               {entry.isStageActivation && (
                 <div className="mb-3 flex items-center gap-2 rounded-lg bg-green-50 p-2 border border-green-200">

@@ -1,11 +1,13 @@
 import { useState, useEffect, forwardRef, useImperativeHandle } from "react";
-import { BookOpen, Code, Award, Briefcase, Link as LinkIcon, FileText, Image as ImageIcon, X, Plus, ChevronDown, ChevronUp, AlertCircle, CheckCircle, Loader } from "lucide-react";
+import { BookOpen, Code, Award, Briefcase, Link as LinkIcon, FileText, Image as ImageIcon, X, Plus, ChevronDown, ChevronUp, AlertCircle, CheckCircle, Loader, Trash2 } from "lucide-react";
 import api, {
   extractApiData,
   extractApiError,
   getAccessToken,
   getApiUrl,
   uploadStudentPhoto,
+  deleteStudentPhoto,
+  deleteResume,
 } from "../api";
 import { PrimaryButton, StatusMessage } from "./ui";
 import SKILLS_BY_DEPARTMENT from "../constants/skillsByDepartment";
@@ -494,6 +496,60 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
     e.target.value = "";
   };
 
+  const handleDeleteResume = async () => {
+    if (!window.confirm("Are you sure you want to delete your resume? This action cannot be undone.")) {
+      return;
+    }
+
+    setSavingSection(6);
+    try {
+      const response = await deleteResume();
+      const data = extractApiData(response);
+      setFormData((prev) => ({
+        ...prev,
+        resume: data.resume || {
+          fileName: "",
+          filePath: "",
+          mimeType: "",
+          resumeUrl: "",
+          uploadedAt: null,
+        },
+      }));
+      setSuccessMsg("Resume deleted successfully");
+      onFormChange && onFormChange();
+    } catch (error) {
+      setErrorMsg(extractApiError(error, "Failed to delete resume"));
+    } finally {
+      setSavingSection(null);
+    }
+  };
+
+  const handleDeleteProfilePhoto = async () => {
+    if (!window.confirm("Are you sure you want to delete your profile photo? This action cannot be undone.")) {
+      return;
+    }
+
+    setSavingSection(7);
+    try {
+      const response = await deleteStudentPhoto();
+      const data = extractApiData(response);
+      setFormData((prev) => ({
+        ...prev,
+        studentPhoto: data.studentPhoto || {
+          data: "",
+          contentType: "",
+          fileName: "",
+        },
+      }));
+      setSuccessMsg("Profile photo deleted successfully");
+      onFormChange && onFormChange();
+    } catch (error) {
+      setErrorMsg(extractApiError(error, "Failed to delete profile photo"));
+    } finally {
+      setSavingSection(null);
+    }
+  };
+
   const saveProfessionalLinks = async () => {
     const errors = validateProfessionalLinks();
     if (Object.keys(errors).length > 0) {
@@ -623,7 +679,7 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
         <div className="flex overflow-x-auto">
           <TabButton id={0} label="Student ID" icon={BookOpen} />
           <TabButton id={1} label="Academic Info" icon={BookOpen} />
-          <TabButton id={2} label="Technical Skills" icon={Code} />
+          <TabButton id={2} label="Skills" icon={Code} />
           <TabButton id={3} label="Certifications" icon={Award} />
           <TabButton id={4} label="Projects" icon={Briefcase} />
           <TabButton id={5} label="Links & Resume" icon={LinkIcon} />
@@ -1135,18 +1191,28 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
                         )}
                       </div>
                     </div>
-                    <a
-                      href={
-                        formData.resume.resumeUrl?.startsWith("http")
-                          ? formData.resume.resumeUrl
-                          : `${String(getApiUrl() || "").replace(/\/api\/?$/i, "")}/${String(formData.resume.resumeUrl || "").replace(/^\//, "")}`
-                      }
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-purple-600 hover:text-purple-700 text-sm font-medium"
-                    >
-                      Download
-                    </a>
+                    <div className="flex items-center gap-2">
+                      <a
+                        href={
+                          formData.resume.resumeUrl?.startsWith("http")
+                            ? formData.resume.resumeUrl
+                            : `${String(getApiUrl() || "").replace(/\/api\/?$/i, "")}/${String(formData.resume.resumeUrl || "").replace(/^\//, "")}`
+                        }
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-purple-600 hover:text-purple-700 text-sm font-medium"
+                      >
+                        Download
+                      </a>
+                      <button
+                        onClick={handleDeleteResume}
+                        disabled={savingSection === 6}
+                        className="text-red-600 hover:text-red-700 disabled:text-slate-400 disabled:cursor-not-allowed p-1"
+                        title="Delete resume"
+                      >
+                        <Trash2 size={20} />
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -1190,6 +1256,16 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
                         <span className="font-medium text-slate-800">File: </span>
                         {formData.studentPhoto.fileName || "photo"}
                       </p>
+                      <div className="flex justify-center">
+                        <button
+                          onClick={handleDeleteProfilePhoto}
+                          disabled={savingSection === 7}
+                          className="flex items-center gap-2 text-red-600 hover:text-red-700 disabled:text-slate-400 disabled:cursor-not-allowed text-sm font-medium px-3 py-2 rounded border border-red-200 hover:bg-red-50"
+                        >
+                          <Trash2 size={16} />
+                          Delete Photo
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <p className="text-sm text-slate-600 text-center">No profile photo uploaded yet.</p>

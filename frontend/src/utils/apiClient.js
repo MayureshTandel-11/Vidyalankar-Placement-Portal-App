@@ -279,11 +279,19 @@ export const getSocketUrl = () => SOCKET_URL;
 export const uploadStudentPhoto = (body) =>
   api.put("/student/upload-photo", body, { timeout: 60000 });
 
+/** Delete student profile photo */
+export const deleteStudentPhoto = () =>
+  api.delete("/student/photo", { timeout: 60000 });
+
 /** Faculty/Admin: binary download */
 export const downloadStudentPhoto = (studentId) =>
   api.get(`/student/download-photo/${encodeURIComponent(String(studentId).trim())}`, {
     responseType: "blob",
     timeout: 60000,
   });
+
+/** Delete student resume */
+export const deleteResume = () =>
+  api.delete("/student/resume", { timeout: 60000 });
 
 export default api;

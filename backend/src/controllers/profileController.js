@@ -459,7 +459,10 @@ const uploadResume = async (req, res) => {
       return fail(res, 400, "Resume file size must be less than 5MB");
     }
 
-    const relativePath = `uploads/resumes/${req.file.filename}`;
+    // Convert absolute path to relative path for storage
+    const absolutePath = req.file.path;
+    const relativePath = path.relative(process.cwd(), absolutePath).replace(/\\/g, "/");
+
     const ext = path.extname(req.file.originalname || "").toLowerCase();
     const mimeType = req.file.mimetype || MIME_FOR_EXT[ext] || "application/octet-stream";
 
@@ -745,8 +748,15 @@ const downloadResume = async (req, res) => {
       return res.redirect(rel);
     }
 
-    const absolutePath = path.join(__dirname, "../../", rel);
-    console.log("[RESUME] Serving local file:", absolutePath);
+    // Resolve the file path (handle both relative and absolute paths)
+    let absolutePath;
+    if (path.isAbsolute(rel)) {
+      absolutePath = rel;
+    } else {
+      absolutePath = path.resolve(process.cwd(), rel);
+    }
+
+    console.log("[RESUME] Resolved absolute path:", absolutePath);
 
     if (!fs.existsSync(absolutePath)) {
       console.error("[RESUME] File not found:", absolutePath);
@@ -773,6 +783,108 @@ const downloadResume = async (req, res) => {
   }
 };
 
+// 13. Delete Resume
+const deleteResume = async (req, res) => {
+  try {
+    if (req.user.role !== "student") {
+      return fail(res, 403, "Only students can delete their resume");
+    }
+
+    const student = await User.findById(req.user._id);
+    if (!student) {
+      return fail(res, 404, "Student not found");
+    }
+
+    // Get the file path before deleting
+    const resumePath = student.resume?.filePath || student.resume?.resumeUrl;
+
+    // Delete file from disk if it exists
+    if (resumePath && String(resumePath).trim()) {
+      let absolutePath;
+      if (path.isAbsolute(resumePath)) {
+        absolutePath = resumePath;
+      } else {
+        absolutePath = path.resolve(process.cwd(), resumePath);
+      }
+
+      try {
+        if (fs.existsSync(absolutePath)) {
+          fs.unlinkSync(absolutePath);
+          console.log(`[RESUME DELETE] File deleted: ${absolutePath}`);
+        }
+      } catch (fileError) {
+        console.error("[RESUME DELETE] Error deleting file:", fileError.message);
+        // Continue even if file deletion fails, we'll still clear the DB entry
+      }
+    }
+
+    // Clear resume from database
+    const updatedStudent = await User.findByIdAndUpdate(
+      req.user._id,
+      {
+        resume: {
+          fileName: "",
+          filePath: "",
+          mimeType: "",
+          resumeUrl: "",
+          uploadedAt: null,
+        },
+      },
+      { returnDocument: "after", runValidators: true }
+    );
+
+    if (!updatedStudent) {
+      return fail(res, 404, "Student not found");
+    }
+
+    return ok(res, { message: "Resume deleted successfully", resume: updatedStudent.resume });
+  } catch (error) {
+    console.error("[DELETE RESUME ERROR]", error);
+    return fail(res, 500, "Error deleting resume", error.message);
+  }
+};
+
+// 14. Delete Student Photo
+const deleteStudentPhoto = async (req, res) => {
+  try {
+    if (req.user.role !== "student") {
+      return fail(res, 403, "Only students can delete their profile photo");
+    }
+
+    const student = await User.findById(req.user._id);
+    if (!student) {
+      return fail(res, 404, "Student not found");
+    }
+
+    // Check if photo exists
+    if (!student.studentPhoto?.data) {
+      return fail(res, 404, "No profile photo found to delete");
+    }
+
+    // Clear profile photo from database
+    const updatedStudent = await User.findByIdAndUpdate(
+      req.user._id,
+      {
+        studentPhoto: {
+          data: "",
+          contentType: "",
+          fileName: "",
+        },
+      },
+      { returnDocument: "after", runValidators: true }
+    );
+
+    if (!updatedStudent) {
+      return fail(res, 404, "Student not found");
+    }
+
+    return ok(res, { message: "Profile photo deleted successfully", studentPhoto: updatedStudent.studentPhoto });
+  } catch (error) {
+    console.error("[DELETE STUDENT PHOTO ERROR]", error);
+    return fail(res, 500, "Error deleting profile photo", error.message);
+  }
+};
+
 module.exports = {
   getStudentProfile,
   updateAcademicInfo,
@@ -784,7 +896,9 @@ module.exports = {
   updateProject,
   deleteProject,
   uploadResume,
+  deleteResume,
   uploadStudentPhoto,
+  deleteStudentPhoto,
   updateProfessionalLinks,
   updateStudentId,
   downloadResume,

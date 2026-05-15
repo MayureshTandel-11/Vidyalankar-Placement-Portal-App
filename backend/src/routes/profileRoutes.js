@@ -10,7 +10,9 @@ const {
   updateProject,
   deleteProject,
   uploadResume,
+  deleteResume,
   uploadStudentPhoto,
+  deleteStudentPhoto,
   updateProfessionalLinks,
   updateStudentId,
   downloadResume,
@@ -107,8 +109,14 @@ router.post(
   uploadResume
 );
 
+// DELETE /api/student/resume - Delete resume
+router.delete("/resume", protect, allowRoles("student"), deleteResume);
+
 // PUT /api/student/upload-photo — Profile photo (JSON base64)
 router.put("/upload-photo", protect, allowRoles("student"), uploadStudentPhoto);
+
+// DELETE /api/student/photo — Delete profile photo
+router.delete("/photo", protect, allowRoles("student"), deleteStudentPhoto);
 
 // POST /api/student/professional-links - Update professional links
 router.post(
@@ -130,7 +138,7 @@ router.post(
 // Faculty can download only from their department
 // Admin can download any student's resume
 router.get(
-  "/resume/download/:studentId",
+  "/resumes/download/:studentId",
   protect,
   allowRoles("faculty", "admin"),
   downloadResume

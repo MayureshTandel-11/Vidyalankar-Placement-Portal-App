@@ -88,6 +88,8 @@ const StudentAnalytics = ({ studentId }) => {
         return "bg-red-100 text-red-800 border-red-300";
       case "not-attended":
         return "bg-gray-100 text-gray-800 border-gray-300";
+      case "not-eligible":
+        return "bg-orange-100 text-orange-800 border-orange-300";
       default:
         return "bg-yellow-100 text-yellow-800 border-yellow-300";
     }
@@ -101,6 +103,8 @@ const StudentAnalytics = ({ studentId }) => {
         return "✗ Rejected";
       case "not-attended":
         return "Not Attempted";
+      case "not-eligible":
+        return "Not Selected";
       default:
         return "Pending";
     }
@@ -130,184 +134,180 @@ const StudentAnalytics = ({ studentId }) => {
 
   return (
     <div className="space-y-6">
-      {/* Student Info */}
-      <div className="rounded-lg border border-slate-200 bg-white p-4">
-        <h2 className="text-lg font-semibold text-slate-900 mb-3">{student.name}</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-          <div>
-            <p className="text-xs font-medium text-slate-600">Email</p>
-            <p className="text-slate-900 font-medium">{student.email}</p>
+      {/* Student Info Card */}
+      <div className="rounded-xl border border-slate-200 bg-gradient-to-r from-white to-slate-50 p-6 shadow-sm hover:shadow-md transition">
+        <h2 className="text-2xl font-bold text-slate-900 mb-4">{student.name}</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 text-sm">
+          <div className="space-y-1">
+            <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Email</p>
+            <p className="text-slate-900 font-medium break-words">{student.email}</p>
           </div>
-          <div>
-            <p className="text-xs font-medium text-slate-600">PRN</p>
+          <div className="space-y-1">
+            <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">PRN</p>
             <p className="text-slate-900 font-medium">{student.studentId}</p>
           </div>
-          <div>
-            <p className="text-xs font-medium text-slate-600">Department</p>
+          <div className="space-y-1">
+            <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Department</p>
             <p className="text-slate-900 font-medium">{student.department}</p>
           </div>
-          <div>
-            <p className="text-xs font-medium text-slate-600">Year</p>
+          <div className="space-y-1">
+            <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Year</p>
             <p className="text-slate-900 font-medium">{student.year || "N/A"}</p>
           </div>
         </div>
       </div>
 
-      {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <div className="flex items-center gap-3 mb-2">
-            <Target size={20} className="text-blue-600" />
-            <p className="text-xs font-medium text-slate-600">Opportunities Applied</p>
+      {/* Key Statistics Cards */}
+      <div>
+        <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+          <span className="w-1.5 h-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full"></span>
+          Key Statistics
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="rounded-xl bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 p-6 hover:shadow-lg transition transform hover:scale-105">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="p-2.5 bg-blue-200 rounded-lg">
+                <Target size={20} className="text-blue-700" />
+              </div>
+              <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Opportunities Applied</p>
+            </div>
+            <p className="text-3xl font-bold text-blue-900">{statistics.totalApplied}</p>
+            <p className="text-xs text-blue-700 mt-2 font-medium">Active placements</p>
           </div>
-          <p className="text-3xl font-bold text-slate-900">{statistics.totalApplied}</p>
-        </div>
 
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <div className="flex items-center gap-3 mb-2">
-            <CheckCircle size={20} className="text-green-600" />
-            <p className="text-xs font-medium text-slate-600">Aptitude Cleared</p>
+          <div className="rounded-xl bg-gradient-to-br from-green-50 to-green-100 border border-green-200 p-6 hover:shadow-lg transition transform hover:scale-105">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="p-2.5 bg-green-200 rounded-lg">
+                <CheckCircle size={20} className="text-green-700" />
+              </div>
+              <p className="text-xs font-semibold text-green-700 uppercase tracking-wide">Aptitude Cleared</p>
+            </div>
+            <p className="text-3xl font-bold text-green-900">{statistics.totalClearedAptitude}</p>
+            <p className="text-xs text-green-700 mt-2 font-medium">Tests passed</p>
           </div>
-          <p className="text-3xl font-bold text-slate-900">{statistics.totalClearedAptitude}</p>
-        </div>
 
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <div className="flex items-center gap-3 mb-2">
-            <TrendingUp size={20} className="text-indigo-600" />
-            <p className="text-xs font-medium text-slate-600">Max Stage Reached</p>
+          <div className="rounded-xl bg-gradient-to-br from-indigo-50 to-indigo-100 border border-indigo-200 p-6 hover:shadow-lg transition transform hover:scale-105">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="p-2.5 bg-indigo-200 rounded-lg">
+                <TrendingUp size={20} className="text-indigo-700" />
+              </div>
+              <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wide">Max Stage Reached</p>
+            </div>
+            <p className="text-3xl font-bold text-indigo-900">{statistics.totalClearedHR > 0 ? "HR Interview" : statistics.totalClearedTechnical > 0 ? "Technical" : "Aptitude"}</p>
+            <p className="text-xs text-indigo-700 mt-2 font-medium">Highest achievement</p>
           </div>
-          <p className="text-3xl font-bold text-slate-900">{statistics.totalClearedHR > 0 ? "HR Interview" : statistics.totalClearedTechnical > 0 ? "Technical" : "Aptitude"}</p>
         </div>
       </div>
 
       {/* Stage Breakdown */}
-      <div className="rounded-lg border border-slate-200 bg-white p-4">
-        <h3 className="text-sm font-semibold text-slate-900 mb-4">Stage Breakdown</h3>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          <div className="text-center">
-            <p className="text-xs text-slate-600 mb-2">Aptitude</p>
-            <p className="text-2xl font-bold text-blue-600">{statistics.totalClearedAptitude}</p>
-          </div>
-          <div className="text-center">
-            <p className="text-xs text-slate-600 mb-2">Group Discussion</p>
-            <p className="text-2xl font-bold text-indigo-600">{statistics.totalClearedGD}</p>
-          </div>
-          <div className="text-center">
-            <p className="text-xs text-slate-600 mb-2">Technical</p>
-            <p className="text-2xl font-bold text-purple-600">{statistics.totalClearedTechnical}</p>
-          </div>
-          <div className="text-center">
-            <p className="text-xs text-slate-600 mb-2">HR</p>
-            <p className="text-2xl font-bold text-emerald-600">{statistics.totalClearedHR}</p>
-          </div>
-          <div className="text-center">
-            <p className="text-xs text-slate-600 mb-2">Rejected</p>
-            <p className="text-2xl font-bold text-red-600">{statistics.totalRejected}</p>
+      <div>
+        <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+          <span className="w-1.5 h-1.5 bg-gradient-to-r from-purple-600 to-pink-600 rounded-full"></span>
+          Stage-wise Breakdown
+        </h3>
+        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="text-center p-4 rounded-lg bg-gradient-to-b from-blue-50 to-white border border-blue-200 hover:shadow-md transition">
+              <p className="text-xs text-slate-700 font-semibold uppercase tracking-wide mb-2">Aptitude</p>
+              <p className="text-3xl font-bold text-blue-600">{statistics.totalClearedAptitude}</p>
+              <div className="mt-2 w-full h-1.5 bg-blue-100 rounded-full overflow-hidden">
+                <div className="h-full bg-blue-500" style={{width: `${Math.min(100, (statistics.totalClearedAptitude / Math.max(1, statistics.totalApplied)) * 100)}%`}}></div>
+              </div>
+            </div>
+            <div className="text-center p-4 rounded-lg bg-gradient-to-b from-purple-50 to-white border border-purple-200 hover:shadow-md transition">
+              <p className="text-xs text-slate-700 font-semibold uppercase tracking-wide mb-2">Group Discussion</p>
+              <p className="text-3xl font-bold text-purple-600">{statistics.totalClearedGD}</p>
+              <div className="mt-2 w-full h-1.5 bg-purple-100 rounded-full overflow-hidden">
+                <div className="h-full bg-purple-500" style={{width: `${Math.min(100, (statistics.totalClearedGD / Math.max(1, statistics.totalApplied)) * 100)}%`}}></div>
+              </div>
+            </div>
+            <div className="text-center p-4 rounded-lg bg-gradient-to-b from-cyan-50 to-white border border-cyan-200 hover:shadow-md transition">
+              <p className="text-xs text-slate-700 font-semibold uppercase tracking-wide mb-2">Technical</p>
+              <p className="text-3xl font-bold text-cyan-600">{statistics.totalClearedTechnical}</p>
+              <div className="mt-2 w-full h-1.5 bg-cyan-100 rounded-full overflow-hidden">
+                <div className="h-full bg-cyan-500" style={{width: `${Math.min(100, (statistics.totalClearedTechnical / Math.max(1, statistics.totalApplied)) * 100)}%`}}></div>
+              </div>
+            </div>
+            <div className="text-center p-4 rounded-lg bg-gradient-to-b from-emerald-50 to-white border border-emerald-200 hover:shadow-md transition">
+              <p className="text-xs text-slate-700 font-semibold uppercase tracking-wide mb-2">HR</p>
+              <p className="text-3xl font-bold text-emerald-600">{statistics.totalClearedHR}</p>
+              <div className="mt-2 w-full h-1.5 bg-emerald-100 rounded-full overflow-hidden">
+                <div className="h-full bg-emerald-500" style={{width: `${Math.min(100, (statistics.totalClearedHR / Math.max(1, statistics.totalApplied)) * 100)}%`}}></div>
+              </div>
+            </div>
+            <div className="text-center p-4 rounded-lg bg-gradient-to-b from-red-50 to-white border border-red-200 hover:shadow-md transition">
+              <p className="text-xs text-slate-700 font-semibold uppercase tracking-wide mb-2">Rejected</p>
+              <p className="text-3xl font-bold text-red-600">{statistics.totalRejected}</p>
+              <div className="mt-2 w-full h-1.5 bg-red-100 rounded-full overflow-hidden">
+                <div className="h-full bg-red-500" style={{width: `${Math.min(100, (statistics.totalRejected / Math.max(1, statistics.totalApplied)) * 100)}%`}}></div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
       {/* Opportunities List */}
-      <div className="space-y-3">
-        <h3 className="text-sm font-semibold text-slate-900">Applied Opportunities</h3>
+      <div>
+        <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+          <span className="w-1.5 h-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 rounded-full"></span>
+          Applied Opportunities <span className="ml-auto text-xs font-normal bg-slate-100 text-slate-700 px-3 py-1 rounded-full">{opportunities.length} total</span>
+        </h3>
         {opportunities.length === 0 ? (
-          <p className="text-sm text-slate-600 py-8 text-center">No opportunities found</p>
+          <div className="rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 p-8 text-center">
+            <p className="text-slate-600 font-medium">No opportunities found yet</p>
+            <p className="text-slate-500 text-sm mt-1">Start applying to placement opportunities</p>
+          </div>
         ) : (
-          opportunities.map((opp) => (
-            <div
-              key={opp.opportunityId}
-              className="rounded-lg border border-slate-200 bg-white p-4 hover:shadow-md transition cursor-pointer"
-              onClick={() => {
-                setSelectedOpportunity(opp);
-                fetchOpportunityDetails(opp.opportunityId);
-              }}
-            >
-              <div className="mb-3">
-                <h4 className="font-semibold text-slate-900">{opp.title}</h4>
-                <p className="text-xs text-slate-600">
-                  {opp.type} • {opp.department} • Status: {opp.status}
-                </p>
-              </div>
-
-              {/* Stages Progress */}
-              <div className="flex flex-wrap gap-2">
-                {["Aptitude Test", "Group Discussion", "Technical Interview", "HR Interview"].map(
-                  (stage) => (
-                    <div
-                      key={stage}
-                      className={`px-3 py-1.5 rounded-full text-xs font-medium border ${getStageColor(
-                        opp.stageProgress[stage]
-                      )}`}
-                    >
-                      {stage.split(" ").pop()}: {getStageStatusLabel(opp.stageProgress[stage])}
-                    </div>
-                  )
-                )}
-              </div>
-
-              <p className="text-xs text-slate-600 mt-3">
-                <strong>Highest Stage:</strong> {opp.highestStageCleared}
-              </p>
-            </div>
-          ))
-        )}
-      </div>
-
-      {/* Opportunity Details Modal */}
-      {showDetailsModal && opportunityDetails && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
-            <div className="p-6">
-              <h3 className="text-lg font-semibold text-slate-900 mb-4">
-                {opportunityDetails.opportunity.title}
-              </h3>
-
-              <div className="space-y-4 mb-6">
-                {opportunityDetails.stageProgress.map((stage) => (
-                  <div key={stage.stage}>
-                    <div className="flex items-center justify-between mb-1">
-                      <p className="text-sm font-medium text-slate-900">{stage.stage}</p>
-                      <span
-                        className={`text-xs font-semibold px-2 py-1 rounded ${
-                          stage.status === "present"
-                            ? "bg-green-100 text-green-800"
-                            : stage.status === "absent"
-                            ? "bg-red-100 text-red-800"
-                            : "bg-gray-100 text-gray-800"
-                        }`}
-                      >
-                        {getStageStatusLabel(stage.status)}
-                      </span>
-                    </div>
-                    {stage.markedAt && (
-                      <p className="text-xs text-slate-600">
-                        {new Date(stage.markedAt).toLocaleDateString()}
-                      </p>
-                    )}
+          <div className="space-y-3 max-h-96 overflow-y-auto">
+            {opportunities.map((opp, idx) => (
+              <div
+                key={opp.opportunityId}
+                className="rounded-lg border border-slate-200 bg-white p-4 hover:shadow-lg transition cursor-pointer hover:border-slate-300 group"
+                onClick={() => {
+                  setSelectedOpportunity(opp);
+                  fetchOpportunityDetails(opp.opportunityId);
+                }}
+              >
+                <div className="mb-3 flex items-start gap-3">
+                  <div className="mt-0.5 w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center flex-shrink-0 group-hover:bg-blue-100 transition">
+                    <span className="text-xs font-bold text-slate-600 group-hover:text-blue-600">{idx + 1}</span>
                   </div>
-                ))}
-              </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-semibold text-slate-900 group-hover:text-blue-600 transition">{opp.title}</h4>
+                    <p className="text-xs text-slate-600 mt-1">
+                      <span className="inline-block bg-blue-50 text-blue-700 px-2 py-0.5 rounded mr-2 font-medium">{opp.type}</span>
+                      <span className="inline-block bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-medium">{opp.department}</span>
+                      <span className="inline-block bg-slate-100 text-slate-700 px-2 py-0.5 rounded ml-2 font-medium capitalize">{opp.status}</span>
+                    </p>
+                  </div>
+                </div>
 
-              {opportunityDetails.rejectionRound && (
-                <div className="rounded-lg bg-red-50 border border-red-200 p-3 mb-6">
-                  <p className="text-xs text-red-800">
-                    <strong>Rejected in:</strong> {opportunityDetails.rejectionRound}
+                {/* Stages Progress */}
+                <div className="flex flex-wrap gap-2">
+                  {["Aptitude Test", "Group Discussion", "Technical Interview", "HR Interview"].map(
+                    (stage) => (
+                      <div
+                        key={stage}
+                        className={`px-2.5 py-1.5 rounded-full text-xs font-semibold border transition ${getStageColor(
+                          opp.stageProgress[stage]
+                        )}`}
+                      >
+                        {stage.split(" ").pop()}: {getStageStatusLabel(opp.stageProgress[stage])}
+                      </div>
+                    )
+                  )}
+                </div>
+
+                <div className="mt-3 pt-3 border-t border-slate-100">
+                  <p className="text-xs text-slate-600">
+                    <span className="font-semibold text-slate-900">Highest Stage:</span> <span className="text-blue-600 font-medium">{opp.highestStageCleared}</span>
                   </p>
                 </div>
-              )}
-            </div>
-
-            <div className="flex gap-3 p-4 border-t border-slate-200 justify-end">
-              <button
-                onClick={() => setShowDetailsModal(false)}
-                className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition"
-              >
-                Close
-              </button>
-            </div>
+              </div>
+            ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 };

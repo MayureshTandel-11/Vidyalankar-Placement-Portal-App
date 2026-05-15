@@ -10,6 +10,7 @@ const {
   applyToOpportunity,
   getApplicantsCount,
   getApplicants,
+  downloadApplicants,
   getOpportunityApplications,
   saveStageSelections,
   getStageSelections,
@@ -28,6 +29,7 @@ router.post("/", protect, allowRoles("admin", "faculty"), validateOpportunityReq
 router.put("/:id", protect, allowRoles("admin", "faculty"), validateOpportunityRequest, updateOpportunity);
 router.post("/:id/apply", protect, applyToOpportunity);
 router.get("/:id/applicants/count", protect, allowRoles("admin", "faculty"), getApplicantsCount);
+router.get("/:id/applicants/download", protect, allowRoles("admin", "faculty"), downloadApplicants);
 router.get("/:id/applicants", protect, allowRoles("admin", "faculty"), getApplicants);
 router.get("/:id/applications", protect, allowRoles("admin", "faculty"), getOpportunityApplications);
 

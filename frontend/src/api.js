@@ -22,7 +22,9 @@ export {
   getApiUrl,
   getSocketUrl,
   uploadStudentPhoto,
+  deleteStudentPhoto,
   downloadStudentPhoto,
+  deleteResume,
 } from "./utils/apiClient";
 
 // Re-export the default api instance

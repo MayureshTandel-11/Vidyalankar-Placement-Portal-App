@@ -23,6 +23,11 @@ const RECRUITMENT_STAGES = [
   "Result",
 ];
 
+// ======================================
+// HELPER: Check if stage is Result stage
+// ======================================
+const isResultStage = (stage) => stage?.toLowerCase() === "result";
+
 const OpportunityAttendance = ({ opportunityId, activeStages }) => {
   const [selectedStage, setSelectedStage] = useState(null);
   const [attendanceList, setAttendanceList] = useState([]);
@@ -110,6 +115,13 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
 
     // Skip attendance API calls for General Update stage
     if (isGeneralUpdate) {
+      setAttendanceList([]);
+      setStageStatus(null);
+      return;
+    }
+
+    // Skip attendance API calls for Result stage - no attendance tracking for final result
+    if (isResultStage(selectedStage)) {
       setAttendanceList([]);
       setStageStatus(null);
       return;
@@ -597,6 +609,20 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-8 text-center">
           <p className="text-sm text-slate-600">Select a stage above to view attendance.</p>
         </div>
+      ) : isResultStage(selectedStage) ? (
+        // Result stage - no attendance tracking
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-8 text-center">
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-blue-300 mb-3">
+            <CheckCircle size={24} className="text-blue-700" />
+          </div>
+          <p className="text-base font-medium text-blue-800 mb-2">Final Result Stage</p>
+          <p className="text-sm text-blue-700 mb-2">
+            This stage does not use attendance tracking. Faculty/Admin can directly declare the final result.
+          </p>
+          <p className="text-xs text-blue-600 mt-3 px-4">
+            <strong>Allowed actions:</strong> Mark students as Selected or Rejected. No manual selection or promotion to next round.
+          </p>
+        </div>
       ) : isGeneralUpdate ? (
         // General Update stage - no attendance tracking
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-8 text-center">
@@ -796,34 +822,39 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
                     </div>
 
                       <div className="flex gap-2">
-                        <button
-                          onClick={() =>
-                            handleMarkAttendance(student.studentId, "present")
-                          }
-                          disabled={!canEditAttendance}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                            currentStatus === "present"
-                              ? "bg-emerald-100 text-emerald-700 border border-emerald-300"
-                              : "bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200"
-                          } ${!canEditAttendance ? "opacity-50 cursor-not-allowed" : ""}`}
-                        >
-                          <CheckCircle size={14} className="inline mr-1" />
-                          Present
-                        </button>
-                        <button
-                          onClick={() =>
-                            handleMarkAttendance(student.studentId, "absent")
-                          }
-                          disabled={!canEditAttendance}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                            currentStatus === "absent"
-                              ? "bg-rose-100 text-rose-700 border border-rose-300"
-                              : "bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200"
-                          } ${!canEditAttendance ? "opacity-50 cursor-not-allowed" : ""}`}
-                        >
-                          <XCircle size={14} className="inline mr-1" />
-                          Absent
-                        </button>
+                        {/* Hide attendance buttons for Result stage */}
+                        {!isResultStage(selectedStage) && (
+                          <>
+                            <button
+                              onClick={() =>
+                                handleMarkAttendance(student.studentId, "present")
+                              }
+                              disabled={!canEditAttendance}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                                currentStatus === "present"
+                                  ? "bg-emerald-100 text-emerald-700 border border-emerald-300"
+                                  : "bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200"
+                              } ${!canEditAttendance ? "opacity-50 cursor-not-allowed" : ""}`}
+                            >
+                              <CheckCircle size={14} className="inline mr-1" />
+                              Present
+                            </button>
+                            <button
+                              onClick={() =>
+                                handleMarkAttendance(student.studentId, "absent")
+                              }
+                              disabled={!canEditAttendance}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                                currentStatus === "absent"
+                                  ? "bg-rose-100 text-rose-700 border border-rose-300"
+                                  : "bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200"
+                              } ${!canEditAttendance ? "opacity-50 cursor-not-allowed" : ""}`}
+                            >
+                              <XCircle size={14} className="inline mr-1" />
+                              Absent
+                            </button>
+                          </>
+                        )}
                       </div>
                   </div>
                 </div>
@@ -835,7 +866,7 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
       )}
 
       {/* Next Round Selection Section */}
-      {selectedStage && !isReadOnly && !isGeneralUpdate && attendanceList.length > 0 && !isStageSubmitted && (
+      {selectedStage && !isReadOnly && !isGeneralUpdate && !isResultStage(selectedStage) && attendanceList.length > 0 && !isStageSubmitted && (
         <SearchableStudentSelect
           students={attendanceList}
           selectedIds={selectedStudentIds}
@@ -847,6 +878,7 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
       {selectedStage &&
         isStageSubmitted &&
         !isGeneralUpdate &&
+        !isResultStage(selectedStage) &&
         viewMode === "manual-select" && (
           <div className="space-y-4">
             <div className="rounded-lg border border-purple-200 bg-purple-50 p-4 flex items-start gap-3">
@@ -912,7 +944,8 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
         )}
 
       {/* Fixed Footer with Action Buttons */}
-      {selectedStage && !isReadOnly && !isGeneralUpdate && attendanceList.length > 0 && (
+      {/* Hide for Result stage - no attendance actions allowed */}
+      {selectedStage && !isReadOnly && !isGeneralUpdate && !isResultStage(selectedStage) && attendanceList.length > 0 && (
         <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-lg p-4 flex gap-3 justify-end">
           {/* Manual Selection Save Button */}
           {isStageSubmitted && viewMode === "manual-select" && !manualSelectionCommitted && (

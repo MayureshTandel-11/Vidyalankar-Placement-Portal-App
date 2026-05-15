@@ -35,7 +35,7 @@ const L = {
   ssc: "SSC Percentage",
   hsc: "HSC Percentage",
   cgpa: "CGPA",
-  technicalSkills: "Technical Skills",
+  technicalSkills: "Skills",
   certifications: "Certifications",
   projects: "Projects",
   professionalLinks: "Professional Links",
@@ -50,7 +50,6 @@ const L = {
   projectDesc: "Project Description",
   githubLink: "GitHub Link",
   liveLink: "Live Link",
-  resume: "Resume",
 };
 
 function getPageWidth(doc) {
@@ -154,21 +153,21 @@ export function addLinkedUrlLines(doc, url, x, y, maxWidth) {
   return yy;
 }
 
-function resolveResumeHref(resumeUrl) {
-  if (!resumeUrl || typeof resumeUrl !== "string") return "";
-  const u = resumeUrl.trim();
-  if (!u) return "";
-  if (/^https?:\/\//i.test(u)) return u;
-  try {
-    const apiBase = getApiUrl() || "";
-    const origin = typeof window !== "undefined" ? window.location.origin : "";
-    const base = String(apiBase).replace(/\/api\/?$/i, "") || origin;
-    const path = u.replace(/^\//, "");
-    return base ? `${base.replace(/\/$/, "")}/${path}` : u;
-  } catch {
-    return ensureHttp(u);
-  }
-}
+// function resolveResumeHref(resumeUrl) {
+//   if (!resumeUrl || typeof resumeUrl !== "string") return "";
+//   const u = resumeUrl.trim();
+//   if (!u) return "";
+//   if (/^https?:\/\//i.test(u)) return u;
+//   try {
+//     const apiBase = getApiUrl() || "";
+//     const origin = typeof window !== "undefined" ? window.location.origin : "";
+//     const base = String(apiBase).replace(/\/api\/?$/i, "") || origin;
+//     const path = u.replace(/^\//, "");
+//     return base ? `${base.replace(/\/$/, "")}/${path}` : u;
+//   } catch {
+//     return ensureHttp(u);
+//   }
+// }
 
 function formatDisplayName(student) {
   const n = student?.fullName || student?.name;
@@ -515,20 +514,20 @@ export const generateStudentProfilePDF = (student, enrollmentNumber) => {
     }
 
     // --- Resume (stored URL only; same semantics as profile page) ---
-    const resumeUrl = student?.resume?.resumeUrl || student?.resume?.filePath || "";
-    if (resumeUrl && String(resumeUrl).trim()) {
-      y = addSectionTitle(doc, L.resume, y);
-      const href = resolveResumeHref(String(resumeUrl).trim());
-      doc.setFontSize(FONT_BODY);
-      doc.setTextColor(...MUTED);
-      y = addWrappedText(doc, "Resume file (link):", PAGE_MARGIN_X, y, contentMaxWidth(doc));
-      doc.setTextColor(...PRIMARY);
-      if (href) {
-        y = addLinkedUrlLines(doc, href, PAGE_MARGIN_X, y + 1, contentMaxWidth(doc));
-      } else {
-        y = addWrappedText(doc, String(resumeUrl), PAGE_MARGIN_X, y + 1, contentMaxWidth(doc));
-      }
-    }
+    // const resumeUrl = student?.resume?.resumeUrl || student?.resume?.filePath || "";
+    // if (resumeUrl && String(resumeUrl).trim()) {
+    //   y = addSectionTitle(doc, L.resume, y);
+    //   const href = resolveResumeHref(String(resumeUrl).trim());
+    //   doc.setFontSize(FONT_BODY);
+    //   doc.setTextColor(...MUTED);
+    //   y = addWrappedText(doc, "Resume file (link):", PAGE_MARGIN_X, y, contentMaxWidth(doc));
+    //   doc.setTextColor(...PRIMARY);
+    //   if (href) {
+    //     y = addLinkedUrlLines(doc, href, PAGE_MARGIN_X, y + 1, contentMaxWidth(doc));
+    //   } else {
+    //     y = addWrappedText(doc, String(resumeUrl), PAGE_MARGIN_X, y + 1, contentMaxWidth(doc));
+    //   }
+    // }
 
     drawFooterPages(doc);
 

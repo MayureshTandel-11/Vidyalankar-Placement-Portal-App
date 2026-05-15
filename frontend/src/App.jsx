@@ -18,7 +18,7 @@ import Layout from "./components/Layout";
 import Footer from "./components/Footer";
 import StudentManagement from "./components/StudentManagement";
 import StudentAnalytics from "./components/StudentAnalytics";
-import Notifications from "./components/Notifications";
+// import Notifications from "./components/Notifications";
 import { useState } from "react";
 import AnalyticsPage from "./pages/AnalyticsPage";
 
@@ -59,7 +59,7 @@ const App = () => {
       <Route path="/students" element={<ProtectedRoute allowRoles={["faculty", "admin"]}><Layout role={user?.role?.charAt(0).toUpperCase() + user?.role?.slice(1)}><StudentManagement /></Layout></ProtectedRoute>} />
       {/* FIX: Use dedicated AnalyticsPage instead of broken inline StudentAnalytics with null studentId */}
       <Route path="/analytics" element={<ProtectedRoute allowRoles={["faculty", "admin"]}><AnalyticsPage /></ProtectedRoute>} />
-      <Route path="/notifications" element={<ProtectedRoute allowRoles={["student"]}><Layout role="Student"><Notifications onUnreadCountChange={setUnreadNotifications} /></Layout></ProtectedRoute>} />
+      {/* <Route path="/notifications" element={<ProtectedRoute allowRoles={["student"]}><Layout role="Student"><Notifications onUnreadCountChange={setUnreadNotifications} /></Layout></ProtectedRoute>} /> */}
       <Route path="/request-deletion" element={<ProtectedRoute allowRoles={["student"]}><StudentDeletionRequestPage /></ProtectedRoute>} />
       <Route path="/student/profile" element={<ProtectedRoute allowRoles={["student"]}><StudentProfilePage /></ProtectedRoute>} />
       <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />

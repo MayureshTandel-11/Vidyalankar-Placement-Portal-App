@@ -167,9 +167,84 @@ const generateAttendanceFilename = (driveName = "attendance", stageName = "") =>
   return `${filename}.csv`;
 };
 
+/**
+ * Convert applicants to CSV string
+ * @param {Array} applicants - Array of applicant objects with student data
+ * @param {string} opportunityName - Name of the opportunity
+ * @returns {string} CSV content
+ */
+const generateApplicantsCSV = (applicants, opportunityName = "Opportunity") => {
+  if (!Array.isArray(applicants) || applicants.length === 0) {
+    return "No applicants found for this opportunity";
+  }
+
+  // CSV Headers
+  const headers = [
+    "Sr. No.",
+    "Student Name",
+    "Email",
+    "PRN",
+    "Department",
+    "Applied On",
+  ];
+
+  // Create header row
+  const headerRow = headers.map(escapeCSVField).join(",");
+
+  // Create data rows
+  const dataRows = applicants.map((applicant, index) => {
+    const student = applicant.student || {};
+    const cells = [
+      escapeCSVField(index + 1),
+      escapeCSVField(student.name || "N/A"),
+      escapeCSVField(student.email || "N/A"),
+      escapeCSVField(student.studentId || "N/A"),
+      escapeCSVField(student.department || "N/A"),
+      escapeCSVField(formatDateTime(applicant.appliedAt)),
+    ];
+
+    return cells.join(",");
+  });
+
+  const lines = [
+    // Header with opportunity name
+    `Applicants List - ${escapeCSVField(opportunityName)}`,
+    "",
+    // Metadata
+    `Total Applicants,${applicants.length}`,
+    `Export Date,${formatDateTime(new Date())}`,
+    "",
+    // Column headers
+    headerRow,
+    // Data rows
+    ...dataRows,
+  ];
+
+  return lines.join("\n");
+};
+
+/**
+ * Generate filename for applicants CSV
+ * @param {string} opportunityName - Name of the opportunity
+ * @returns {string} Filename
+ */
+const generateApplicantsFilename = (opportunityName = "opportunity") => {
+  const sanitizeName = (name) =>
+    String(name)
+      .toLowerCase()
+      .replace(/\s+/g, "_")
+      .replace(/[^a-z0-9_-]/g, "")
+      .substring(0, 50);
+
+  const filename = `applicants_${sanitizeName(opportunityName)}`;
+  return `${filename}.csv`;
+};
+
 module.exports = {
   generateAttendanceCSV,
   generateAttendanceFilename,
+  generateApplicantsCSV,
+  generateApplicantsFilename,
   escapeCSVField,
   formatDateTime,
 };
