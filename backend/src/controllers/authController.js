@@ -12,7 +12,7 @@ const { isValidDepartment } = require("../constants/departments");
 // 10 rounds (~100ms) is the industry standard recommended by OWASP and bcrypt's own docs.
 // 12 rounds (~400ms) causes slow login without meaningful security improvement for this app.
 const BCRYPT_SALT_ROUNDS = 10;
-const ACCESS_TOKEN_EXPIRY = "30m";
+const ACCESS_TOKEN_EXPIRY = "2m";
 const REFRESH_TOKEN_EXPIRY = "7d";
 const OTP_EXPIRY_MS = 10 * 60 * 1000; // 10 minutes
 const MAX_OTP_ATTEMPTS = 3;
@@ -88,7 +88,7 @@ const setRefreshTokenCookie = (res, refreshToken) => {
   res.cookie("refreshToken", refreshToken, {
     httpOnly: true, // Not accessible via JavaScript
     secure: process.env.NODE_ENV === "production", // HTTPS only in production
-    sameSite: "strict", // CSRF protection
+    sameSite: "lax", // CSRF protection
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in milliseconds
     path: "/", // Available to all routes
     signed: false // Not signed, JWT is self-validating
