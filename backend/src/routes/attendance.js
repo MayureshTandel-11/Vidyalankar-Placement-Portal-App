@@ -8,6 +8,7 @@ const { getIO } = require("../utils/io");
 const { ok, fail } = require("../utils/apiResponse");
 const { generateAttendanceCSV, generateAttendanceFilename } = require("../utils/csvExport");
 const { canFacultyCollaborateOnOpportunity } = require("../utils/opportunityAccess");
+const { getRoundSelectionMessage, createRoundSelectionTimelineEntry } = require("../utils/timelineHelpers");
 
 const router = express.Router();
 
@@ -750,16 +751,20 @@ router.post("/select-next-round/:opportunityId/:stage", protect, allowRoles("fac
         // Find student user
         const student = await User.findOne({ studentId });
         if (student) {
-          // ISSUE 2 FIX: Use different message wording for HR cleared (final stage before Result)
-          // Check if current round is HR and next is Result - special case messaging
-          let message;
-          if (stage === "HR Interview" && nextStage === "Result") {
-            message = `Congratulations! You have cleared the HR Interview stage.`;
-          } else {
-            message = `Congratulations! You have been selected for the next round (${nextStage}) for ${opportunity.announcementHeading || "this opportunity"}.`;
+          const message = getRoundSelectionMessage(stage);
+
+          const existingNotification = await Notification.findOne({
+            studentId: student._id,
+            opportunityId: new mongoose.Types.ObjectId(opportunityId),
+            stage: nextStage,
+            notificationType: "selection",
+          });
+
+          if (existingNotification) {
+            continue;
           }
 
-          // Create notification
+          try {
           await Notification.create({
             studentId: student._id,
             opportunityId: new mongoose.Types.ObjectId(opportunityId),
@@ -767,6 +772,12 @@ router.post("/select-next-round/:opportunityId/:stage", protect, allowRoles("fac
             message,
             notificationType: "selection",
           });
+          } catch (notifErr) {
+            if (notifErr.code !== 11000) {
+              console.error(`[NOTIFICATION ERROR for student ${studentId}]`, notifErr);
+            }
+            continue;
+          }
 
           // Emit Socket.IO event for real-time notification
           const io = getIO();
@@ -883,14 +894,14 @@ router.post("/manual-select/:opportunityId/:stage", protect, allowRoles("faculty
       attendanceMap[record.studentId] = record.status;
     });
 
-    // Validate that all selected students were present
+    // Only students marked present may be manually selected
     const invalidSelections = selectedStudentIds.filter(
-      (studentId) => attendanceMap[studentId] === "absent"
+      (studentId) => attendanceMap[studentId] !== "present"
     );
 
     if (invalidSelections.length > 0) {
       return res.status(400).json({
-        message: `Cannot select absent students: ${invalidSelections.join(", ")}`,
+        message: `Only students marked present can be selected. Invalid: ${invalidSelections.join(", ")}`,
       });
     }
 
@@ -991,14 +1002,7 @@ router.post("/manual-select/:opportunityId/:stage", protect, allowRoles("faculty
           continue; // Skip timeline creation for non-present students
         }
 
-        // Use different message wording for HR cleared (final stage before Result)
-        // Check if current round is HR and next is Result - special case messaging
-        let message;
-        if (stage === "HR Interview" && nextRoundName === "Result") {
-          message = `Congratulations! You have cleared the HR Interview stage.`;
-        } else {
-          message = `Congratulations! You have been selected for the next round (${nextRoundName}) for ${companyName}.`;
-        }
+        const message = getRoundSelectionMessage(stage);
 
         // FIX: Check if notification already exists before creating
         // Prevents duplicate notifications from concurrent requests or retries
@@ -1039,76 +1043,38 @@ router.post("/manual-select/:opportunityId/:stage", protect, allowRoles("faculty
           });
         }
 
-        // STRICT DUPLICATE PREVENTION: Check if congratulations already exists for this student
-        // Uses type field with compound unique index to prevent duplicates
-        // Ensures EXACTLY ONE congratulation message per student per stage per opportunity
         const normalizedStudentId = String(sid).trim();
-        const existingTimeline = await OpportunityTimeline.findOne({
-          opportunityId: new mongoose.Types.ObjectId(opportunityId),
-          studentId: normalizedStudentId,
-          stage: nextRoundName,
-          type: "ROUND_SELECTION",
-        });
-
-        if (existingTimeline) {
-          console.log(
-            "[DUPLICATE BLOCKED] Timeline entry already exists for this student",
-            {
-              opportunityId,
-              studentId: normalizedStudentId,
-              stage: nextRoundName,
-              type: "ROUND_SELECTION",
-              existingId: existingTimeline._id,
-              existingCreatedAt: existingTimeline.createdAt,
-            }
-          );
-          continue; // Skip if congratulations message already exists for THIS STUDENT
-        }
-
-        // Create timeline entry for congratulation message
-        // Uses the actual next stage (e.g., "Group Discussion", "Technical Interview", "HR Interview")
-        // NOT "General Update" - this ensures congratulations appear as normal timeline entries
-        let newTimelineEntry = null;
-        try {
-          newTimelineEntry = await OpportunityTimeline.create({
+        const { entry: timelineEntry, created: timelineCreated } =
+          await createRoundSelectionTimelineEntry({
+            OpportunityTimeline,
             opportunityId: new mongoose.Types.ObjectId(opportunityId),
             studentId: normalizedStudentId,
+            sourceStage: stage,
             postedBy: req.user._id,
             role: req.user.role,
-            stage: nextRoundName,
-            comment: message,
-            type: "ROUND_SELECTION",
-            isStageActivation: false,
           });
 
+        if (timelineCreated) {
           console.log(
             `[MANUAL SELECT TIMELINE ✓] Created congratulations entry`,
-            { opportunityId, stage, nextRoundName, studentId: normalizedStudentId, entryId: newTimelineEntry._id, timestamp: newTimelineEntry.createdAt }
-          );
-
-          // FIX: Collect created entry for socket emission
-          createdTimelineEntries.push(newTimelineEntry);
-        } catch (timelineErr) {
-          // Handle duplicate key error (E11000) - entry already created by concurrent request
-          if (timelineErr.code === 11000) {
-            console.warn(
-              `[DUPLICATE KEY ERROR E11000] Concurrent creation prevented for student`,
-              { studentId: normalizedStudentId, stage: nextRoundName, error: timelineErr.message }
-            );
-            // Re-fetch to get the existing entry details
-            const existingEntry = await OpportunityTimeline.findOne({
-              opportunityId: new mongoose.Types.ObjectId(opportunityId),
+            {
+              opportunityId,
+              sourceStage: stage,
               studentId: normalizedStudentId,
-              stage: nextRoundName,
-              type: "ROUND_SELECTION",
-            });
-            if (existingEntry) {
-              console.log(`[DUPLICATE RESOLVED] Found existing entry created by concurrent request`, { entryId: existingEntry._id });
+              entryId: timelineEntry._id,
             }
-            continue;
-          } else {
-            throw timelineErr;
-          }
+          );
+          createdTimelineEntries.push(timelineEntry);
+        } else {
+          console.log(
+            "[DUPLICATE BLOCKED] Timeline entry already exists for this student and round",
+            {
+              opportunityId,
+              sourceStage: stage,
+              studentId: normalizedStudentId,
+              existingId: timelineEntry._id,
+            }
+          );
         }
       } catch (inner) {
         console.error("[MANUAL SELECT NOTIFY]", inner);

@@ -581,6 +581,7 @@ const OpportunityCard = ({
               key={timelineRefreshKey}
               opportunityId={opportunity._id}
               userRole={userRole}
+              currentStudentId={user?.studentId || null}
               activeStages={activeStages}
               stageManualSelections={opportunity.stageManualSelections || []}
               applications={opportunity.applications || []}

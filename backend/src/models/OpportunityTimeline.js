@@ -37,6 +37,18 @@ const opportunityTimelineSchema = new mongoose.Schema(
       ],
       required: true,
     },
+    // Recruitment round that triggered a ROUND_SELECTION entry (badge stage is "General Update")
+    sourceStage: {
+      type: String,
+      enum: [
+        "Aptitude Test",
+        "Group Discussion",
+        "Technical Interview",
+        "HR Interview",
+      ],
+      default: null,
+      index: true,
+    },
     comment: {
       type: String,
       required: true,
@@ -66,18 +78,16 @@ const opportunityTimelineSchema = new mongoose.Schema(
 opportunityTimelineSchema.index({ opportunityId: 1, createdAt: -1 });
 // Compound index for timeline filtering
 opportunityTimelineSchema.index({ opportunityId: 1, studentId: 1, stage: 1 });
-// FIX: PREVENT DUPLICATE CONGRATULATION TIMELINE ENTRIES
-// Unique compound index ensures:
-// - Exactly one congratulation message per student per stage per opportunity
-// - Prevents race conditions and concurrent duplicate insertions
-// - Uses type field to differentiate message types instead of full comment text
+// One ROUND_SELECTION congratulations per student per source round (manual selection)
 opportunityTimelineSchema.index(
-  { opportunityId: 1, studentId: 1, stage: 1, type: 1 },
+  { opportunityId: 1, studentId: 1, sourceStage: 1, type: 1 },
   {
     unique: true,
-    sparse: true,  // Allow multiple null studentIds for general stage activation entries
+    sparse: true,
     partialFilterExpression: {
-      studentId: { $exists: true, $ne: null },  // Only enforce uniqueness for student-specific entries
+      studentId: { $exists: true, $ne: null },
+      sourceStage: { $exists: true, $ne: null },
+      type: "ROUND_SELECTION",
     },
   }
 );

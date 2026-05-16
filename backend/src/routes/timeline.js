@@ -7,6 +7,11 @@ const Opportunity = require("../models/Opportunity");
 const OpportunityAttendance = require("../models/OpportunityAttendance");
 const { getIO } = require("../utils/io");
 const { canFacultyCollaborateOnOpportunity, canViewOpportunityAsAudience } = require("../utils/opportunityAccess");
+const {
+  isRoundSelectionComment,
+  filterTimelineForRole,
+  dedupeTimelineEntries,
+} = require("../utils/timelineHelpers");
 
 const router = express.Router();
 
@@ -234,30 +239,27 @@ router.post("/:opportunityId", protect, allowRoles("faculty", "admin"), async (r
       }
     }
 
-    // PREVENT DUPLICATE CONGRATULATION TIMELINE ENTRIES
-    // FIX: Use type field instead of full comment match for better duplicate detection
-    const isCongratulationsMessage =
-      comment.includes("Congratulations! You have been selected for the next round") ||
-      comment.includes("Congratulations! You have cleared the HR Interview stage");
+    // Block faculty from posting round-selection congratulations via timeline POST.
+    // Those entries are created only through manual-select after attendance submit.
+    if (isRoundSelectionComment(comment.trim())) {
+      return res.status(400).json({
+        message:
+          "Round selection congratulations are created automatically when students are manually selected after attendance submission.",
+        code: "ROUND_SELECTION_USE_MANUAL_SELECT",
+      });
+    }
 
-    const entryType = isCongratulationsMessage ? "ROUND_SELECTION" : "GENERAL";
+    const entryType = "GENERAL";
 
-    // Only check for duplicates if this is a student-specific entry
-    if (studentId) {
+    if (studentId && stage === "Result") {
       const existingTimeline = await OpportunityTimeline.findOne({
         opportunityId: opportunity._id,
         studentId: String(studentId).trim(),
-        stage,
-        type: entryType,
+        stage: "Result",
+        type: "GENERAL",
       });
 
       if (existingTimeline) {
-        console.log("[TIMELINE DUPLICATE PREVENTED]", {
-          studentId,
-          stage,
-          type: entryType,
-        });
-
         return res.status(200).json({
           data: existingTimeline,
           message: "Duplicate timeline prevented",
@@ -450,7 +452,6 @@ router.get("/:opportunityId", protect, async (req, res) => {
       return res.status(403).json({ message: "You don't have access to this opportunity timeline" });
     }
 
-    // Fetch timeline entries
     let timeline = await OpportunityTimeline.find({
       opportunityId: opportunity._id,
     })
@@ -458,24 +459,12 @@ router.get("/:opportunityId", protect, async (req, res) => {
       .populate("postedBy", "name role")
       .lean();
 
-    // ROLE-BASED FILTERING: Hide student-specific congratulation messages from faculty/admin
-    // Students see all timeline entries
-    // Faculty/Admin should NOT see student-specific messages (e.g., selection congratulations)
-    if (req.user.role === "faculty" || req.user.role === "admin") {
-      timeline = timeline.filter((entry) => {
-        // Hide entries with student-specific congratulation messages
-        // These are created when faculty/admin manually select students for next round
-        // ISSUE 1 & 2 FIX: Check for both congratulation message types:
-        // - "Congratulations! You have been selected for the next round..." (general stages)
-        // - "Congratulations! You have cleared the HR Interview stage." (HR special case)
-        const isStudentCongratulation =
-          entry.comment &&
-          (entry.comment.includes("Congratulations! You have been selected for the next round") ||
-           entry.comment.includes("Congratulations! You have cleared the HR Interview stage"));
-
-        return !isStudentCongratulation;
-      });
-    }
+    timeline = dedupeTimelineEntries(timeline);
+    timeline = filterTimelineForRole(
+      timeline,
+      req.user.role,
+      req.user.role === "student" ? req.user.studentId : null
+    );
 
     return res.status(200).json({
       data: {

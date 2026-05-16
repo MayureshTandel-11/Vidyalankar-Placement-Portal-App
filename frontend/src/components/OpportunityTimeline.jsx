@@ -4,8 +4,14 @@ import { useOpportunities } from "../context/OpportunitiesContext";
 import { getSocket } from "../utils/socket";
 import { AlertCircle, CheckCircle, MessageSquare, User, Clock } from "lucide-react";
 import { Spinner, StatusMessage } from "./ui";
+import {
+  dedupeTimelineEntries,
+  filterTimelineForRole,
+  isRoundSelectionComment,
+} from "../utils/timelineHelpers";
 
 const stageColors = {
+  "General Update": "bg-[#FFE5E5] text-[#B70D23] border-[#D9394A]",
   "Aptitude Test": "bg-[#FFE5E5] text-[#B70D23] border-[#D9394A]",
   "Group Discussion": "bg-[#FFE5E5] text-[#B70D23] border-[#D9394A]",
   "Technical Interview": "bg-[#FFE5E5] text-[#B70D23] border-[#D9394A]",
@@ -21,7 +27,14 @@ const stageOrder = [
   "Result",
 ];  // Note: "General Update" removed - congratulations now appear as normal timeline entries
 
-  const OpportunityTimeline = ({ opportunityId, userRole, activeStages, stageManualSelections = [], applications = [] }) => {
+  const OpportunityTimeline = ({
+  opportunityId,
+  userRole,
+  currentStudentId = null,
+  activeStages,
+  stageManualSelections = [],
+  applications = [],
+}) => {
   const { fetchTimeline, invalidateTimelineCache } = useOpportunities();
   const [timelineEntries, setTimelineEntries] = useState([]);
   const [localActiveStages, setLocalActiveStages] = useState(activeStages || []);
@@ -35,6 +48,7 @@ const stageOrder = [
   const [activateStage, setActivateStage] = useState(false);
   const socket = getSocket();
   const lastFetchRef = useRef(0);
+  const isFacultyOrAdmin = userRole === "faculty" || userRole === "admin";
 
   // FIX ISSUE 3: Extract selected students from stageManualSelections for Result stage
   // Get students selected in HR Interview (previous stage to Result)
@@ -86,7 +100,13 @@ const stageOrder = [
         setIsLoading(true);
         const result = await fetchTimeline(opportunityId);
         console.log('Timeline data received:', result);
-        const timeline = Array.isArray(result?.timeline) ? result.timeline : [];
+        const timeline = dedupeTimelineEntries(
+          filterTimelineForRole(
+            Array.isArray(result?.timeline) ? result.timeline : [],
+            userRole,
+            currentStudentId
+          )
+        );
         const stages = Array.isArray(result?.activeStages) ? result.activeStages : [];
         setTimelineEntries(timeline);
         setLocalActiveStages(stages);
@@ -100,7 +120,7 @@ const stageOrder = [
     };
 
     doFetch();
-  }, [opportunityId, fetchTimeline]);
+  }, [opportunityId, fetchTimeline, userRole, currentStudentId]);
 
 //   useEffect(() => {
 //     if (!socket) return; // Guard against null socket
@@ -140,45 +160,22 @@ useEffect(() => {
   if (!socket) return;
 
   const handleTimelineEntry = ({ entry, activeStages: newActiveStages }) => {
-    console.log('[Timeline Socket] New entry received:', {
-      entryId: entry._id,
-      comment: entry.comment?.substring(0, 50) + '...',
-      studentId: entry.studentId,
-      stage: entry.stage,
-      type: entry.type,
-      timestamp: entry.createdAt,
-    });
+    if (!entry) return;
+
+    if (isFacultyOrAdmin && isRoundSelectionComment(entry.comment)) {
+      return;
+    }
+
+    if (userRole === "student" && entry.studentId) {
+      const sid = currentStudentId ? String(currentStudentId).trim() : null;
+      if (!sid || String(entry.studentId).trim() !== sid) {
+        return;
+      }
+    }
 
     setTimelineEntries((prev) => {
-      // Prevent duplicate entries by checking _id
-      const exists = prev.some((item) => item._id === entry._id);
-
-      if (exists) {
-        console.warn('[Timeline Dedup] Entry already exists in state', { entryId: entry._id });
-        return prev;
-      }
-
-      // Also check for duplicate content (same stage, studentId, type, comment) created in same second
-      const duplicateContent = prev.some(
-        (item) =>
-          item.stage === entry.stage &&
-          item.studentId === entry.studentId &&
-          item.type === entry.type &&
-          item.comment === entry.comment &&
-          Math.abs(new Date(item.createdAt).getTime() - new Date(entry.createdAt).getTime()) < 1000
-      );
-
-      if (duplicateContent) {
-        console.warn('[Timeline Dedup] Duplicate content detected (same stage/student/type/message within 1s)', {
-          entryId: entry._id,
-          stage: entry.stage,
-          studentId: entry.studentId,
-        });
-        return prev;
-      }
-
-      console.log('[Timeline Add] Adding new entry to state', { entryId: entry._id, totalEntries: prev.length + 1 });
-      return [...prev, entry];
+      const merged = dedupeTimelineEntries([...prev, entry]);
+      return merged;
     });
 
     // Update active stages
@@ -196,7 +193,7 @@ useEffect(() => {
     socket.off("timeline:new_entry", handleTimelineEntry);
   };
 
-}, [socket]);
+}, [socket, userRole, currentStudentId, isFacultyOrAdmin]);
 
   const handlePostUpdate = async () => {
     if (!newComment.trim() || !selectedStage) {
@@ -265,36 +262,10 @@ useEffect(() => {
     }
   };
 
-  const isFacultyOrAdmin = userRole === "faculty" || userRole === "admin";
-
-  /**
-   * ROLE-BASED FILTERING: Filter timeline entries based on user role
-   * Students see all timeline entries
-   * Faculty/Admin should NOT see student-specific congratulation messages
-   * These are created when faculty/admin manually select students for next round
-   */
-  const getFilteredTimelineEntries = () => {
-    if (!Array.isArray(timelineEntries)) {
-      return [];
-    }
-
-    if (userRole === "student") {
-      // Students see all entries
-      return timelineEntries;
-    }
-
-    if (isFacultyOrAdmin) {
-      // Faculty/Admin: Hide student-specific congratulation messages
-      return timelineEntries.filter((entry) => {
-        const isStudentCongratulation =
-          entry.comment &&
-          entry.comment.includes("Congratulations! You have been selected for the next round");
-        return !isStudentCongratulation;
-      });
-    }
-
-    return timelineEntries;
-  };
+  const getFilteredTimelineEntries = () =>
+    dedupeTimelineEntries(
+      filterTimelineForRole(timelineEntries, userRole, currentStudentId)
+    );
 
   /**
    * ISSUE 2 FIX: Check if Result stage already has a comment/result
@@ -315,12 +286,7 @@ useEffect(() => {
   const isResultStageSelected = selectedStage === "Result";
   const canPostComment = !isResultStageSelected || !resultStageCommentExists;
 
-  // const filteredEntries = getFilteredTimelineEntries();
-  const filteredEntries = [
-  ...new Map(
-    getFilteredTimelineEntries().map((item) => [item._id, item])
-  ).values(),
-];
+  const filteredEntries = getFilteredTimelineEntries();
 
   return (
     <div className="space-y-6">
