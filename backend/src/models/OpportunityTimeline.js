@@ -46,6 +46,14 @@ const opportunityTimelineSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    // FIX: Add type field to differentiate between congratulation messages and general comments
+    // This allows unique constraint on (opportunityId, studentId, stage, type) instead of full comment
+    type: {
+      type: String,
+      enum: ["ROUND_SELECTION", "GENERAL"],
+      default: "GENERAL",
+      index: true,
+    },
     createdAt: {
       type: Date,
       default: Date.now,
@@ -56,13 +64,15 @@ const opportunityTimelineSchema = new mongoose.Schema(
 );
 
 opportunityTimelineSchema.index({ opportunityId: 1, createdAt: -1 });
-// FIX ISSUE 1: Added compound index for per-student Result stage duplicate detection
+// Compound index for timeline filtering
 opportunityTimelineSchema.index({ opportunityId: 1, studentId: 1, stage: 1 });
-// CRITICAL FIX: Add unique compound index to PREVENT DUPLICATE CONGRATULATION TIMELINE ENTRIES
-// Ensures exactly one congratulation message per student per stage per opportunity
-// Prevents race conditions and concurrent duplicate insertions
+// FIX: PREVENT DUPLICATE CONGRATULATION TIMELINE ENTRIES
+// Unique compound index ensures:
+// - Exactly one congratulation message per student per stage per opportunity
+// - Prevents race conditions and concurrent duplicate insertions
+// - Uses type field to differentiate message types instead of full comment text
 opportunityTimelineSchema.index(
-  { opportunityId: 1, studentId: 1, stage: 1, comment: 1 },
+  { opportunityId: 1, studentId: 1, stage: 1, type: 1 },
   {
     unique: true,
     sparse: true,  // Allow multiple null studentIds for general stage activation entries

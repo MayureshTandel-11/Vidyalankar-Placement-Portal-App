@@ -200,6 +200,7 @@ router.post("/:opportunityId", protect, allowRoles("faculty", "admin"), async (r
           stage,
           comment: comment.trim(),
           isStageActivation: false,
+          type: "GENERAL",  // Result stage comments are general, not selection messages
         }));
 
         await OpportunityTimeline.insertMany(timelineEntries);
@@ -234,31 +235,35 @@ router.post("/:opportunityId", protect, allowRoles("faculty", "admin"), async (r
     }
 
     // PREVENT DUPLICATE CONGRATULATION TIMELINE ENTRIES
-const isCongratulationsMessage =
-  comment.includes("Congratulations! You have been selected for the next round") ||
-  comment.includes("Congratulations! You have cleared the HR Interview stage");
+    // FIX: Use type field instead of full comment match for better duplicate detection
+    const isCongratulationsMessage =
+      comment.includes("Congratulations! You have been selected for the next round") ||
+      comment.includes("Congratulations! You have cleared the HR Interview stage");
 
-if (isCongratulationsMessage && studentId) {
-  const existingTimeline = await OpportunityTimeline.findOne({
-    opportunityId: opportunity._id,
-    studentId: String(studentId).trim(),
-    stage,
-    comment: comment.trim(),
-  });
+    const entryType = isCongratulationsMessage ? "ROUND_SELECTION" : "GENERAL";
 
-  if (existingTimeline) {
-    console.log("[TIMELINE DUPLICATE PREVENTED]", {
-      studentId,
-      stage,
-      comment,
-    });
+    // Only check for duplicates if this is a student-specific entry
+    if (studentId) {
+      const existingTimeline = await OpportunityTimeline.findOne({
+        opportunityId: opportunity._id,
+        studentId: String(studentId).trim(),
+        stage,
+        type: entryType,
+      });
 
-    return res.status(200).json({
-      data: existingTimeline,
-      message: "Duplicate timeline prevented",
-    });
-  }
-}
+      if (existingTimeline) {
+        console.log("[TIMELINE DUPLICATE PREVENTED]", {
+          studentId,
+          stage,
+          type: entryType,
+        });
+
+        return res.status(200).json({
+          data: existingTimeline,
+          message: "Duplicate timeline prevented",
+        });
+      }
+    }
     // Create timeline entry
     const timelineEntry = new OpportunityTimeline({
       opportunityId: opportunity._id,
@@ -268,6 +273,7 @@ if (isCongratulationsMessage && studentId) {
       stage,
       comment: comment.trim(),
       isStageActivation: activateStage || false,
+      type: entryType,  // FIX: Include type field for better duplicate detection
     });
 
     try {
@@ -279,7 +285,7 @@ if (isCongratulationsMessage && studentId) {
           opportunityId,
           studentId,
           stage,
-          comment: comment.trim(),
+          type: entryType,
           errorCode: saveErr.code,
         });
 
@@ -288,13 +294,21 @@ if (isCongratulationsMessage && studentId) {
           opportunityId: opportunity._id,
           studentId: studentId ? String(studentId).trim() : null,
           stage,
-          comment: comment.trim(),
+          type: entryType,
         }).populate("postedBy", "name role");
 
         if (existingEntry) {
           console.log("[TIMELINE DUPLICATE] Returning existing entry instead of throwing error");
-          // Continue processing as if the entry was created successfully
-          // Just use existingEntry instead of timelineEntry for further operations
+          // Emit the existing entry via Socket.IO and return
+          const io = getIO();
+          if (io) {
+            const updatedOpp = await Opportunity.findById(opportunityId);
+            io.to(`opportunity_${opportunityId}`).emit("timeline:new_entry", {
+              entry: existingEntry.toObject(),
+              activeStages: updatedOpp.activeStages,
+            });
+          }
+          return res.status(201).json({ data: existingEntry, message: "Timeline entry already exists" });
         } else {
           throw saveErr;
         }

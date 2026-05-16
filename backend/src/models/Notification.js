@@ -57,4 +57,18 @@ const notificationSchema = new mongoose.Schema(
 notificationSchema.index({ studentId: 1, createdAt: -1 });
 notificationSchema.index({ studentId: 1, isRead: 1 });
 
+// FIX: PREVENT DUPLICATE SELECTION NOTIFICATIONS
+// Unique compound index ensures exactly ONE selection notification per student per opportunity per stage
+// This prevents duplicate congratulations messages from multiple API calls
+notificationSchema.index(
+  { studentId: 1, opportunityId: 1, stage: 1, notificationType: 1 },
+  {
+    unique: true,
+    sparse: true,  // Allow multiple notifications of different types
+    partialFilterExpression: {
+      notificationType: "selection",  // Only enforce uniqueness for selection notifications
+    },
+  }
+);
+
 module.exports = mongoose.model("Notification", notificationSchema);

@@ -52,6 +52,8 @@ const OpportunityAttendance = ({ opportunityId, activeStages, onAttendanceUpdate
   const [isSavingManual, setIsSavingManual] = useState(false);
   const [manualSelectionsLoaded, setManualSelectionsLoaded] = useState(false);
   const [manualSelectionCommitted, setManualSelectionCommitted] = useState(false);
+  const [lastSavedSelection, setLastSavedSelection] = useState([]); // FIX: Track last saved to prevent duplicates
+  const [savingInProgress, setSavingInProgress] = useState(false); // FIX: Prevent concurrent saves
 
   // ======================================
   // HELPER: Check if stage is General Update
@@ -90,6 +92,8 @@ const OpportunityAttendance = ({ opportunityId, activeStages, onAttendanceUpdate
       );
       const selections = response.data?.data?.selectedStudentIds || [];
       setManualSelectedIds(selections);
+      // FIX: Track the loaded selection to prevent duplicate saves
+      setLastSavedSelection(selections);
       if (selections.length > 0) {
         setManualSelectionCommitted(true);
       }
@@ -270,6 +274,22 @@ const OpportunityAttendance = ({ opportunityId, activeStages, onAttendanceUpdate
       return;
     }
 
+    // FIX: Check if the selection is identical to last saved to prevent duplicates
+    const normalizedCurrent = [...manualSelectedIds].sort().join(",");
+    const normalizedLastSaved = [...lastSavedSelection].sort().join(",");
+    if (normalizedCurrent === normalizedLastSaved && manualSelectionCommitted) {
+      setError("This selection was already saved");
+      toast.info("This selection was already saved");
+      return;
+    }
+
+    // FIX: Prevent duplicate calls while saving (stronger check)
+    if (isSavingManual || savingInProgress) {
+      console.warn("[SAVE PREVENTED] Already saving manual selections", { isSavingManual, savingInProgress });
+      return;
+    }
+
+    setSavingInProgress(true);
     setIsSavingManual(true);
     setError("");
 
@@ -295,9 +315,19 @@ const OpportunityAttendance = ({ opportunityId, activeStages, onAttendanceUpdate
         console.log("[OPPORTUNITY ATTENDANCE ✓] Manual selections saved successfully");
       }
 
+      // FIX: Track the saved selection to prevent duplicate saves
+      const normalizedSelection = [...new Set(manualSelectedIds)].sort();
+      setLastSavedSelection(normalizedSelection);
       setManualSelectionCommitted(true);
       toast.success(`Selection saved for ${manualSelectedIds.length} student(s).`);
       setError("");
+
+      if (process.env.NODE_ENV === "development") {
+        console.log("[OPPORTUNITY ATTENDANCE ✓] Manual selections saved and committed to state", {
+          count: manualSelectedIds.length,
+          normalized: normalizedSelection,
+        });
+      }
 
       // FIX: Call onAttendanceUpdate to refresh timeline and active stages
       if (onAttendanceUpdate) {
@@ -339,6 +369,7 @@ const OpportunityAttendance = ({ opportunityId, activeStages, onAttendanceUpdate
       });
     } finally {
       setIsSavingManual(false);
+      setSavingInProgress(false);
     }
   };
 
@@ -590,7 +621,7 @@ const OpportunityAttendance = ({ opportunityId, activeStages, onAttendanceUpdate
           })}
 
           {/* General Update stage (if active) */}
-          {activeStages?.includes("General Update") && (
+          {/* { activeStages?.includes("General Update") && (
             <div className="relative flex-shrink-0">
               <button
                 onClick={() => setSelectedStage("General Update")}
@@ -606,7 +637,7 @@ const OpportunityAttendance = ({ opportunityId, activeStages, onAttendanceUpdate
                 Info
               </span>
             </div>
-          )}
+          )} */}
         </div>
       </div>
 

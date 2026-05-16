@@ -102,38 +102,101 @@ const stageOrder = [
     doFetch();
   }, [opportunityId, fetchTimeline]);
 
-  useEffect(() => {
-    if (!socket) return; // Guard against null socket
+//   useEffect(() => {
+//     if (!socket) return; // Guard against null socket
 
-    const handleTimelineEntry = ({ entry, activeStages: newActiveStages }) => {
-      console.log('[Timeline Socket] New entry received:', entry, 'activeStages:', newActiveStages);
-      // setTimelineEntries((prev) => {
-      //   const updated = [...(Array.isArray(prev) ? prev : []), entry];
-      //   return updated;
-      // });
-      setTimelineEntries((prev) => {
-   const exists = prev.some(
-      (item) => item._id === entry._id
-   );
+//     const handleTimelineEntry = ({ entry, activeStages: newActiveStages }) => {
+//       console.log('[Timeline Socket] New entry received:', entry, 'activeStages:', newActiveStages);
+//       // setTimelineEntries((prev) => {
+//       //   const updated = [...(Array.isArray(prev) ? prev : []), entry];
+//       //   return updated;
+//       // });
+//       setTimelineEntries((prev) => {
+//    const exists = prev.some(
+//       (item) => item._id === entry._id
+//    );
 
-   if (exists) {
-      return prev;
-   }
+//    if (exists) {
+//       return prev;
+//    }
 
-   return [...prev, entry];
-});
-      if (Array.isArray(newActiveStages) && newActiveStages.length > 0) {
-        setLocalActiveStages(newActiveStages);
-        invalidateTimelineCache(opportunityId);
+//    return [...prev, entry];
+// });
+//       if (Array.isArray(newActiveStages) && newActiveStages.length > 0) {
+//         setLocalActiveStages(newActiveStages);
+//         invalidateTimelineCache(opportunityId);
+//       }
+//     };
+
+//     socket.on("timeline:new_entry", handleTimelineEntry);
+
+//     return () => {
+//       socket.off("timeline:new_entry", handleTimelineEntry);
+//     };
+//   }, [socket, opportunityId, invalidateTimelineCache]);
+
+
+useEffect(() => {
+  if (!socket) return;
+
+  const handleTimelineEntry = ({ entry, activeStages: newActiveStages }) => {
+    console.log('[Timeline Socket] New entry received:', {
+      entryId: entry._id,
+      comment: entry.comment?.substring(0, 50) + '...',
+      studentId: entry.studentId,
+      stage: entry.stage,
+      type: entry.type,
+      timestamp: entry.createdAt,
+    });
+
+    setTimelineEntries((prev) => {
+      // Prevent duplicate entries by checking _id
+      const exists = prev.some((item) => item._id === entry._id);
+
+      if (exists) {
+        console.warn('[Timeline Dedup] Entry already exists in state', { entryId: entry._id });
+        return prev;
       }
-    };
 
-    socket.on("timeline:new_entry", handleTimelineEntry);
+      // Also check for duplicate content (same stage, studentId, type, comment) created in same second
+      const duplicateContent = prev.some(
+        (item) =>
+          item.stage === entry.stage &&
+          item.studentId === entry.studentId &&
+          item.type === entry.type &&
+          item.comment === entry.comment &&
+          Math.abs(new Date(item.createdAt).getTime() - new Date(entry.createdAt).getTime()) < 1000
+      );
 
-    return () => {
-      socket.off("timeline:new_entry", handleTimelineEntry);
-    };
-  }, [socket, opportunityId, invalidateTimelineCache]);
+      if (duplicateContent) {
+        console.warn('[Timeline Dedup] Duplicate content detected (same stage/student/type/message within 1s)', {
+          entryId: entry._id,
+          stage: entry.stage,
+          studentId: entry.studentId,
+        });
+        return prev;
+      }
+
+      console.log('[Timeline Add] Adding new entry to state', { entryId: entry._id, totalEntries: prev.length + 1 });
+      return [...prev, entry];
+    });
+
+    // Update active stages
+    if (Array.isArray(newActiveStages)) {
+      setLocalActiveStages(newActiveStages);
+    }
+  };
+
+  // Remove old listeners before adding new one
+  socket.off("timeline:new_entry");
+
+  socket.on("timeline:new_entry", handleTimelineEntry);
+
+  return () => {
+    socket.off("timeline:new_entry", handleTimelineEntry);
+  };
+
+}, [socket]);
 
   const handlePostUpdate = async () => {
     if (!newComment.trim() || !selectedStage) {
@@ -152,21 +215,7 @@ const stageOrder = [
     setIsPosting(true);
     setError("");
 
-    // Create optimistic entry for immediate UI update
-    const optimisticEntry = {
-      _id: `temp_${Math.random().toString(36).substr(2, 9)}`,
-      stage: selectedStage,
-      comment: newComment,
-      postedBy: { name: "You" },
-      role: "faculty",
-      isStageActivation: activateStage && selectedStage !== "Result",
-      createdAt: new Date().toISOString(),
-    };
-
     try {
-      // Add optimistic entry immediately
-      setTimelineEntries((prev) => [...(Array.isArray(prev) ? prev : []), optimisticEntry]);
-
       // FIX: Include studentId or studentIds in POST body for Result stage
       const postBody = {
         stage: selectedStage,
@@ -198,16 +247,7 @@ const stageOrder = [
         });
       }
 
-      // Replace optimistic entry with real one(s)
-      setTimelineEntries((prev) => {
-        // Handle both single entry and array of entries from batch operations
-        const newEntries = Array.isArray(response.data?.data) ? response.data.data : [response.data?.data];
-        // Replace optimistic entry with all real entries
-        return prev.map((entry) =>
-          entry._id === optimisticEntry._id ? newEntries[0] : entry
-        ).concat(newEntries.length > 1 ? newEntries.slice(1) : []);
-      });
-
+      // Socket.IO is the single source of truth for timeline updates
       // Invalidate cache so next fetch gets fresh data
       invalidateTimelineCache(opportunityId);
 
@@ -217,9 +257,6 @@ const stageOrder = [
       setSelectAllStudents(false); // FIX: Reset Select All toggle
       setActivateStage(false);
     } catch (err) {
-      // Remove optimistic entry on error
-      setTimelineEntries((prev) => prev.filter((entry) => entry._id !== optimisticEntry._id));
-
       const errorMessage = err.response?.data?.message || err.message || "Failed to post update";
       setError(errorMessage);
       console.error("[POST TIMELINE ERROR]", err);
@@ -266,14 +303,24 @@ const stageOrder = [
    */
   const hasResultStageComment = () => {
     if (!Array.isArray(timelineEntries)) return false;
-    return timelineEntries.some((entry) => entry.stage === "Result");
+    // return timelineEntries.some((entry) => entry.stage === "Result");
+    return timelineEntries.some(
+  (entry) =>
+    entry.stage === "Result" &&
+    entry.studentId === selectedStudentId
+);
   };
 
   const resultStageCommentExists = hasResultStageComment();
   const isResultStageSelected = selectedStage === "Result";
   const canPostComment = !isResultStageSelected || !resultStageCommentExists;
 
-  const filteredEntries = getFilteredTimelineEntries();
+  // const filteredEntries = getFilteredTimelineEntries();
+  const filteredEntries = [
+  ...new Map(
+    getFilteredTimelineEntries().map((item) => [item._id, item])
+  ).values(),
+];
 
   return (
     <div className="space-y-6">
@@ -424,7 +471,10 @@ const stageOrder = [
               )}
             </div>
 
-            {selectedStage && selectedStage !== "Result" && (
+            {/* {selectedStage && selectedStage !== "Result" && ( */}
+            {selectedStage &&
+                    selectedStage !== "Result" &&
+                       selectedStage !== "General Update" && (
               <div className="flex items-center gap-2 rounded-lg bg-white/50 p-3 border border-[#B70D23]/20">
                 <input
                   type="checkbox"

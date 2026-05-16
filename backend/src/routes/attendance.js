@@ -779,54 +779,9 @@ router.post("/select-next-round/:opportunityId/:stage", protect, allowRoles("fac
             });
           }
 
-          // STRICT DUPLICATE PREVENTION: Check if congratulations already exists for this student
-          // Prevents duplicate timeline entries per stage per student
-          // Uses EXACT comment match to ensure tight duplicate detection
-          const existingTimeline = await OpportunityTimeline.findOne({
-            opportunityId: new mongoose.Types.ObjectId(opportunityId),
-            studentId: String(studentId).trim(),
-            stage: nextStage,  // Check for existing entry in the NEXT stage
-            comment: message,  // CRITICAL: Use exact message match instead of regex
-          });
-
-          if (existingTimeline) {
-            console.log(
-              `[AUTO SELECT DUPLICATE CHECK] Congratulations already exists for student ${studentId} in stage ${nextStage}.`,
-              `Skipping duplicate message to ensure EXACTLY ONE congratulation per student per stage.`,
-              { opportunityId, stage, nextStage, studentId, existingId: existingTimeline._id }
-            );
-            continue; // Skip if congratulations message already exists for THIS STUDENT
-          }
-
-          // Create timeline entry for congratulation message
-          // Uses the actual next stage (e.g., "Group Discussion", "Technical Interview", "HR Interview")
-          // NOT "General Update" - this allows congratulations to appear as normal timeline entries
-          try {
-            const timelineEntry = await OpportunityTimeline.create({
-              opportunityId: new mongoose.Types.ObjectId(opportunityId),
-              studentId: String(studentId).trim(),
-              postedBy: req.user._id,
-              role: req.user.role,
-              stage: nextStage,  // Use actual stage name (e.g., "Group Discussion"), not "General Update"
-              comment: message,  // Contains the contextual congratulation message
-              isStageActivation: false,
-            });
-
-            console.log(
-              `[AUTO SELECT TIMELINE] Created congratulations entry for student ${studentId}`,
-              { opportunityId, stage, nextStage, studentId, entryId: timelineEntry._id }
-            );
-          } catch (timelineErr) {
-            // Handle duplicate key error (E11000) - entry already created by concurrent request
-            if (timelineErr.code === 11000) {
-              console.log(
-                `[AUTO SELECT TIMELINE DUPLICATE] Concurrent duplicate prevented for student ${studentId}`,
-                { opportunityId, stage, nextStage, studentId, errorCode: timelineErr.code }
-              );
-            } else {
-              throw timelineErr;
-            }
-          }
+          // NOTE: Timeline creation is NOT handled here
+          // All timeline entries for congratulations are created ONLY in manual-select route
+          // This ensures single source of truth for timeline creation
         }
       } catch (err) {
         console.error(`[NOTIFICATION ERROR for student ${studentId}]`, err);
@@ -956,7 +911,9 @@ router.post("/manual-select/:opportunityId/:stage", protect, allowRoles("faculty
       ? normalizeIds(existingSelection.selectedStudentIds).join(",")
       : "";
     const newSig = nextList.join(",");
-    if (prevSig && prevSig === newSig) {
+    // FIX: Detect duplicate selection even on first call
+    // If the selection hasn't changed from existing selection, return 409
+    if (prevSig === newSig) {
       return res.status(409).json({
         success: false,
         message: "This selection was already saved",
@@ -967,6 +924,21 @@ router.post("/manual-select/:opportunityId/:stage", protect, allowRoles("faculty
       (existingSelection?.selectedStudentIds || []).map((x) => String(x).trim())
     );
     const studentsToNotify = nextList.filter((id) => !prevNotifySet.has(id));
+
+    // DEBUG: Log studentsToNotify to check for duplicates
+    console.log(
+      `[MANUAL SELECT] Calculating studentsToNotify:`,
+      { stage, nextList, prevSelected: existingSelection?.selectedStudentIds, studentsToNotify, uniqueCount: new Set(studentsToNotify).size }
+    );
+
+    // SAFETY: Deduplicate studentsToNotify to ensure no student appears twice
+    const uniqueStudentsToNotify = [...new Set(studentsToNotify)];
+    if (uniqueStudentsToNotify.length !== studentsToNotify.length) {
+      console.warn(
+        `[MANUAL SELECT WARNING] studentsToNotify contained duplicates! Original: ${studentsToNotify.length}, Unique: ${uniqueStudentsToNotify.length}`,
+        { original: studentsToNotify, unique: uniqueStudentsToNotify }
+      );
+    }
 
     const stageOrder = ["Aptitude Test", "Group Discussion", "Technical Interview", "HR Interview"];
     const currentStageIndex = stageOrder.indexOf(stage);
@@ -1003,7 +975,7 @@ router.post("/manual-select/:opportunityId/:stage", protect, allowRoles("faculty
     // FIX: Collect all created timeline entries for socket emission
     const createdTimelineEntries = [];
 
-    for (const sid of studentsToNotify) {
+    for (const sid of uniqueStudentsToNotify) {
       try {
         const studentUser = await User.findOne({ studentId: sid });
         if (!studentUser) continue;
@@ -1028,17 +1000,38 @@ router.post("/manual-select/:opportunityId/:stage", protect, allowRoles("faculty
           message = `Congratulations! You have been selected for the next round (${nextRoundName}) for ${companyName}.`;
         }
 
-        await Notification.create({
+        // FIX: Check if notification already exists before creating
+        // Prevents duplicate notifications from concurrent requests or retries
+        const existingNotification = await Notification.findOne({
           studentId: studentUser._id,
           opportunityId: new mongoose.Types.ObjectId(opportunityId),
           stage: nextRoundName,
-          message,
           notificationType: "selection",
         });
 
-        const ioN = getIO();
-        if (ioN) {
-          ioN.to(`student_${studentUser._id}`).emit("notification:new", {
+        if (!existingNotification) {
+          try {
+            await Notification.create({
+              studentId: studentUser._id,
+              opportunityId: new mongoose.Types.ObjectId(opportunityId),
+              stage: nextRoundName,
+              message,
+              notificationType: "selection",
+            });
+          } catch (notifErr) {
+            // Handle duplicate key error (E11000) - notification already created by concurrent request
+            if (notifErr.code === 11000) {
+              console.log("[NOTIFICATION DUPLICATE PREVENTED]", { studentId: sid, stage: nextRoundName });
+            } else {
+              console.error("[NOTIFICATION ERROR]", notifErr);
+            }
+          }
+        }
+
+        // Emit Socket.IO event for real-time notification
+        const io = getIO();
+        if (io) {
+          io.to(`student_${studentUser._id}`).emit("notification:new", {
             message,
             stage: nextRoundName,
             opportunityId,
@@ -1047,20 +1040,27 @@ router.post("/manual-select/:opportunityId/:stage", protect, allowRoles("faculty
         }
 
         // STRICT DUPLICATE PREVENTION: Check if congratulations already exists for this student
-        // Ensures EXACTLY ONE congratulation message per student per stage
-        // Uses EXACT comment match to ensure tight duplicate detection (race condition safe)
+        // Uses type field with compound unique index to prevent duplicates
+        // Ensures EXACTLY ONE congratulation message per student per stage per opportunity
+        const normalizedStudentId = String(sid).trim();
         const existingTimeline = await OpportunityTimeline.findOne({
           opportunityId: new mongoose.Types.ObjectId(opportunityId),
-          studentId: String(sid).trim(),
-          stage: nextRoundName,  // Check for existing entry in the next stage
-          comment: message,  // CRITICAL: Use exact message match instead of regex
+          studentId: normalizedStudentId,
+          stage: nextRoundName,
+          type: "ROUND_SELECTION",
         });
 
         if (existingTimeline) {
           console.log(
-            `[MANUAL SELECT DUPLICATE CHECK] Congratulations already exists for student ${sid} in stage ${nextRoundName}.`,
-            `Skipping to ensure EXACTLY ONE congratulation message per student per stage.`,
-            { opportunityId, stage, nextRoundName, studentId: sid, existingId: existingTimeline._id }
+            "[DUPLICATE BLOCKED] Timeline entry already exists for this student",
+            {
+              opportunityId,
+              studentId: normalizedStudentId,
+              stage: nextRoundName,
+              type: "ROUND_SELECTION",
+              existingId: existingTimeline._id,
+              existingCreatedAt: existingTimeline.createdAt,
+            }
           );
           continue; // Skip if congratulations message already exists for THIS STUDENT
         }
@@ -1072,17 +1072,18 @@ router.post("/manual-select/:opportunityId/:stage", protect, allowRoles("faculty
         try {
           newTimelineEntry = await OpportunityTimeline.create({
             opportunityId: new mongoose.Types.ObjectId(opportunityId),
-            studentId: String(sid).trim(),
+            studentId: normalizedStudentId,
             postedBy: req.user._id,
             role: req.user.role,
-            stage: nextRoundName,  // Use actual stage name, not "General Update"
-            comment: message,  // Contains the contextual congratulation message
+            stage: nextRoundName,
+            comment: message,
+            type: "ROUND_SELECTION",
             isStageActivation: false,
           });
 
           console.log(
-            `[MANUAL SELECT TIMELINE] Created congratulations entry for student ${sid}`,
-            { opportunityId, stage, nextRoundName, studentId: sid, entryId: newTimelineEntry._id }
+            `[MANUAL SELECT TIMELINE ✓] Created congratulations entry`,
+            { opportunityId, stage, nextRoundName, studentId: normalizedStudentId, entryId: newTimelineEntry._id, timestamp: newTimelineEntry.createdAt }
           );
 
           // FIX: Collect created entry for socket emission
@@ -1090,25 +1091,21 @@ router.post("/manual-select/:opportunityId/:stage", protect, allowRoles("faculty
         } catch (timelineErr) {
           // Handle duplicate key error (E11000) - entry already created by concurrent request
           if (timelineErr.code === 11000) {
-            console.log(
-              `[MANUAL SELECT TIMELINE DUPLICATE] Concurrent duplicate prevented for student ${sid}`,
-              { opportunityId, stage, nextRoundName, studentId: sid, errorCode: timelineErr.code }
+            console.warn(
+              `[DUPLICATE KEY ERROR E11000] Concurrent creation prevented for student`,
+              { studentId: normalizedStudentId, stage: nextRoundName, error: timelineErr.message }
             );
-            // Still try to fetch the existing entry to emit it
-            try {
-              const existingEntry = await OpportunityTimeline.findOne({
-                opportunityId: new mongoose.Types.ObjectId(opportunityId),
-                studentId: String(sid).trim(),
-                stage: nextRoundName,
-                comment: message,
-              }).populate("postedBy", "name role");
-
-              if (existingEntry) {
-                createdTimelineEntries.push(existingEntry);
-              }
-            } catch (fetchErr) {
-              console.error("[MANUAL SELECT TIMELINE FETCH ERROR]", fetchErr);
+            // Re-fetch to get the existing entry details
+            const existingEntry = await OpportunityTimeline.findOne({
+              opportunityId: new mongoose.Types.ObjectId(opportunityId),
+              studentId: normalizedStudentId,
+              stage: nextRoundName,
+              type: "ROUND_SELECTION",
+            });
+            if (existingEntry) {
+              console.log(`[DUPLICATE RESOLVED] Found existing entry created by concurrent request`, { entryId: existingEntry._id });
             }
+            continue;
           } else {
             throw timelineErr;
           }
