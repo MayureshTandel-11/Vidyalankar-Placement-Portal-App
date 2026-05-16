@@ -58,5 +58,18 @@ const opportunityTimelineSchema = new mongoose.Schema(
 opportunityTimelineSchema.index({ opportunityId: 1, createdAt: -1 });
 // FIX ISSUE 1: Added compound index for per-student Result stage duplicate detection
 opportunityTimelineSchema.index({ opportunityId: 1, studentId: 1, stage: 1 });
+// CRITICAL FIX: Add unique compound index to PREVENT DUPLICATE CONGRATULATION TIMELINE ENTRIES
+// Ensures exactly one congratulation message per student per stage per opportunity
+// Prevents race conditions and concurrent duplicate insertions
+opportunityTimelineSchema.index(
+  { opportunityId: 1, studentId: 1, stage: 1, comment: 1 },
+  {
+    unique: true,
+    sparse: true,  // Allow multiple null studentIds for general stage activation entries
+    partialFilterExpression: {
+      studentId: { $exists: true, $ne: null },  // Only enforce uniqueness for student-specific entries
+    },
+  }
+);
 
 module.exports = mongoose.model("OpportunityTimeline", opportunityTimelineSchema);

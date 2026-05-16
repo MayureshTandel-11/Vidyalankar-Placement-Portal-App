@@ -109,7 +109,7 @@ router.post("/:opportunityId", protect, allowRoles("faculty", "admin"), async (r
     // Prevent timeline entries for students not selected for current stage
     // ============================================
     // For non-Result stage-specific comments, validate student selection if studentId is provided
-    if (studentId && stage !== "Result" && stage !== "General Update") {
+    if (studentId && stage !== "Result") {
       const stageIndex = RECRUITMENT_STAGE_ORDER.indexOf(stage);
       const studentIdStr = String(studentId).trim();
 
@@ -233,6 +233,32 @@ router.post("/:opportunityId", protect, allowRoles("faculty", "admin"), async (r
       }
     }
 
+    // PREVENT DUPLICATE CONGRATULATION TIMELINE ENTRIES
+const isCongratulationsMessage =
+  comment.includes("Congratulations! You have been selected for the next round") ||
+  comment.includes("Congratulations! You have cleared the HR Interview stage");
+
+if (isCongratulationsMessage && studentId) {
+  const existingTimeline = await OpportunityTimeline.findOne({
+    opportunityId: opportunity._id,
+    studentId: String(studentId).trim(),
+    stage,
+    comment: comment.trim(),
+  });
+
+  if (existingTimeline) {
+    console.log("[TIMELINE DUPLICATE PREVENTED]", {
+      studentId,
+      stage,
+      comment,
+    });
+
+    return res.status(200).json({
+      data: existingTimeline,
+      message: "Duplicate timeline prevented",
+    });
+  }
+}
     // Create timeline entry
     const timelineEntry = new OpportunityTimeline({
       opportunityId: opportunity._id,
@@ -244,10 +270,41 @@ router.post("/:opportunityId", protect, allowRoles("faculty", "admin"), async (r
       isStageActivation: activateStage || false,
     });
 
-    await timelineEntry.save();
+    try {
+      await timelineEntry.save();
+    } catch (saveErr) {
+      // Handle duplicate key error (E11000) - entry already created by concurrent request
+      if (saveErr.code === 11000) {
+        console.log("[TIMELINE DUPLICATE KEY] Concurrent duplicate prevented", {
+          opportunityId,
+          studentId,
+          stage,
+          comment: comment.trim(),
+          errorCode: saveErr.code,
+        });
+
+        // Fetch and return the existing entry instead
+        const existingEntry = await OpportunityTimeline.findOne({
+          opportunityId: opportunity._id,
+          studentId: studentId ? String(studentId).trim() : null,
+          stage,
+          comment: comment.trim(),
+        }).populate("postedBy", "name role");
+
+        if (existingEntry) {
+          console.log("[TIMELINE DUPLICATE] Returning existing entry instead of throwing error");
+          // Continue processing as if the entry was created successfully
+          // Just use existingEntry instead of timelineEntry for further operations
+        } else {
+          throw saveErr;
+        }
+      } else {
+        throw saveErr;
+      }
+    }
 
     // If activateStage is true and stage is not already active, activate it
-    if (activateStage && stage !== "General Update" && !opportunity.activeStages.includes(stage)) {
+    if (activateStage && !opportunity.activeStages.includes(stage)) {
       // ===== STRICT VALIDATION: Non-first stages MUST have manual selection =====
       const stageIndex = RECRUITMENT_STAGE_ORDER.indexOf(stage);
       if (stageIndex > 0) {
@@ -276,7 +333,12 @@ router.post("/:opportunityId", protect, allowRoles("faculty", "admin"), async (r
       // CRITICAL: Get applicants (only selected ones for non-first stages)
       const applicants = applicantsForActivatedStage(opportunity, stage);
 
-      if (applicants.length > 0) {
+      // ONLY disable attendance execution during GENERAL UPDATE stage activation
+      if (stage?.trim().toLowerCase() === "general update") {
+        console.log(
+          `[TIMELINE] Skipping attendance creation for General Update stage (opportunityId=${opportunity._id})`
+        );
+      } else if (applicants.length > 0) {
         const attendanceRecords = applicants.map((app) => ({
           opportunityId: opportunity._id,
           studentId: String(app.studentId).trim(),
@@ -285,6 +347,7 @@ router.post("/:opportunityId", protect, allowRoles("faculty", "admin"), async (r
           markedBy: null,
           markedAt: null,
         }));
+
 
         // Insert with { ordered: false } to skip duplicates
         try {

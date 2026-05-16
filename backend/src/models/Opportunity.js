@@ -39,13 +39,14 @@ const opportunitySchema = new mongoose.Schema(
     }],
     activeStages: {
       type: [String],
-      default: [],
+      default: ["General Update"],
       enum: [
         "Aptitude Test",
         "Group Discussion",
         "Technical Interview",
         "HR Interview",
         "Result",
+        "General Update",
       ],
     },
     // Track attendance submission status per stage

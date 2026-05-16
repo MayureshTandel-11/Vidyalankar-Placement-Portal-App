@@ -583,6 +583,7 @@ const OpportunityCard = ({
               userRole={userRole}
               activeStages={activeStages}
               stageManualSelections={opportunity.stageManualSelections || []}
+              applications={opportunity.applications || []}
               onStageUpdate={refreshActiveStages}
             />
           )}

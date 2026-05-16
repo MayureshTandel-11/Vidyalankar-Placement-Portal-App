@@ -11,7 +11,6 @@ const stageColors = {
   "Technical Interview": "bg-[#FFE5E5] text-[#B70D23] border-[#D9394A]",
   "HR Interview": "bg-[#FFE5E5] text-[#B70D23] border-[#D9394A]",
   Result: "bg-[#FFE5E5] text-[#B70D23] border-[#D9394A]",
-  "General Update": "bg-[#FFE5E5] text-[#B70D23] border-[#D9394A]",
 };
 
 const stageOrder = [
@@ -20,9 +19,9 @@ const stageOrder = [
   "Technical Interview",
   "HR Interview",
   "Result",
-];
+];  // Note: "General Update" removed - congratulations now appear as normal timeline entries
 
-  const OpportunityTimeline = ({ opportunityId, userRole, activeStages, stageManualSelections = [] }) => {
+  const OpportunityTimeline = ({ opportunityId, userRole, activeStages, stageManualSelections = [], applications = [] }) => {
   const { fetchTimeline, invalidateTimelineCache } = useOpportunities();
   const [timelineEntries, setTimelineEntries] = useState([]);
   const [localActiveStages, setLocalActiveStages] = useState(activeStages || []);
@@ -40,6 +39,25 @@ const stageOrder = [
   // FIX ISSUE 3: Extract selected students from stageManualSelections for Result stage
   // Get students selected in HR Interview (previous stage to Result)
   const hrSelectedStudents = stageManualSelections?.find((s) => s.stage === "HR Interview")?.selectedStudentIds || [];
+
+  // Helper function to get student details by ID
+  // Maps student IDs (e.g., "B001") to full student information for display
+  const getStudentDetails = (studentId) => {
+    const app = applications.find((a) => String(a.studentId).trim() === String(studentId).trim());
+    if (app && app.student) {
+      return {
+        id: studentId,
+        name: app.student.name || app.student.email || studentId,
+        email: app.student.email,
+      };
+    }
+    // Fallback to just the ID if student info not available
+    return {
+      id: studentId,
+      name: studentId,
+      email: "",
+    };
+  };
 
   useEffect(() => {
     if (activeStages && activeStages.length > 0) {
@@ -89,10 +107,21 @@ const stageOrder = [
 
     const handleTimelineEntry = ({ entry, activeStages: newActiveStages }) => {
       console.log('[Timeline Socket] New entry received:', entry, 'activeStages:', newActiveStages);
+      // setTimelineEntries((prev) => {
+      //   const updated = [...(Array.isArray(prev) ? prev : []), entry];
+      //   return updated;
+      // });
       setTimelineEntries((prev) => {
-        const updated = [...(Array.isArray(prev) ? prev : []), entry];
-        return updated;
-      });
+   const exists = prev.some(
+      (item) => item._id === entry._id
+   );
+
+   if (exists) {
+      return prev;
+   }
+
+   return [...prev, entry];
+});
       if (Array.isArray(newActiveStages) && newActiveStages.length > 0) {
         setLocalActiveStages(newActiveStages);
         invalidateTimelineCache(opportunityId);
@@ -130,7 +159,7 @@ const stageOrder = [
       comment: newComment,
       postedBy: { name: "You" },
       role: "faculty",
-      isStageActivation: activateStage && selectedStage !== "General Update",
+      isStageActivation: activateStage && selectedStage !== "Result",
       createdAt: new Date().toISOString(),
     };
 
@@ -142,7 +171,7 @@ const stageOrder = [
       const postBody = {
         stage: selectedStage,
         comment: newComment,
-        activateStage: activateStage && selectedStage !== "General Update",
+        activateStage: activateStage && selectedStage !== "Result",
       };
 
       // Add studentId/studentIds for Result stage comments
@@ -159,7 +188,7 @@ const stageOrder = [
       const response = await api.post(`/timeline/${opportunityId}`, postBody);
 
       // If stage was activated, update local active stages
-      if (activateStage && selectedStage !== "General Update") {
+      if (activateStage && selectedStage !== "Result") {
         setLocalActiveStages((prev) => {
           const updated = Array.isArray(prev) ? [...prev] : [];
           if (!updated.includes(selectedStage)) {
@@ -299,12 +328,12 @@ const stageOrder = [
               >
                 <option value="">Select a stage...</option>
                 {[
+                  "General Update",
                   "Aptitude Test",
                   "Group Discussion",
                   "Technical Interview",
                   "HR Interview",
                   "Result",
-                  "General Update",
                 ].map((stage) => (
                   <option key={stage} value={stage}>
                     {stage}
@@ -354,11 +383,14 @@ const stageOrder = [
                   >
                     <option value="">{selectAllStudents ? "Applying to all students" : "Choose a student..."}</option>
                     {hrSelectedStudents.length > 0 ? (
-                      hrSelectedStudents.map((studentId) => (
-                        <option key={studentId} value={studentId}>
-                          {studentId}
-                        </option>
-                      ))
+                      hrSelectedStudents.map((studentId) => {
+                        const studentDetails = getStudentDetails(studentId);
+                        return (
+                          <option key={studentId} value={studentId}>
+                            {studentDetails.name} ({studentDetails.id})
+                          </option>
+                        );
+                      })
                     ) : (
                       <option disabled>No students selected for HR Interview</option>
                     )}
@@ -392,7 +424,7 @@ const stageOrder = [
               )}
             </div>
 
-            {selectedStage && selectedStage !== "General Update" && selectedStage !== "Result" && (
+            {selectedStage && selectedStage !== "Result" && (
               <div className="flex items-center gap-2 rounded-lg bg-white/50 p-3 border border-[#B70D23]/20">
                 <input
                   type="checkbox"
@@ -441,7 +473,7 @@ const stageOrder = [
           </div>
         ) : (
           [...filteredEntries].reverse().map((entry, idx) => (
-            <div key={idx} className="rounded-lg border border-slate-200 bg-white p-4 hover:shadow-md transition-shadow">
+            <div key={entry._id} className="rounded-lg border border-slate-200 bg-white p-4 hover:shadow-md transition-shadow">
               {entry.isStageActivation && (
                 <div className="mb-3 flex items-center gap-2 rounded-lg bg-green-50 p-2 border border-green-200">
                   <CheckCircle size={16} className="text-green-600 flex-shrink-0" />
@@ -456,11 +488,11 @@ const stageOrder = [
                   <div className="flex items-center gap-2 mb-1">
                     <span
                       className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold border ${
-                        stageColors[entry.stage] || stageColors["General Update"]
+                        stageColors[entry.stage] || "bg-[#FFE5E5] text-[#B70D23] border-[#D9394A]"
                       }`}
                     >
-                      {/* ISSUE 1 FIX: Display "General Update" as label for congratulations messages */}
-                      {entry.stage === "General Update" ? "General Update" : entry.stage}
+                      {/* Display the stage badge with proper coloring */}
+                      {entry.stage}
                     </span>
                     <span className="text-xs font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded">
                       {entry.role === "faculty" ? "Faculty" : "Admin"}

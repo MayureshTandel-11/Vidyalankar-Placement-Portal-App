@@ -259,6 +259,9 @@ router.patch("/:opportunityId", protect, allowRoles("faculty", "admin"), async (
       return res.status(400).json({ message: "Status must be 'present' or 'absent'" });
     }
 
+    // Validate stage - reject both General Update AND Result stage
+    // NOTE: stageValidation already validated above in this handler
+
     // Check if attendance for this stage has been submitted
     const opportunity = await Opportunity.findById(opportunityId);
     if (!opportunity) {
@@ -776,37 +779,54 @@ router.post("/select-next-round/:opportunityId/:stage", protect, allowRoles("fac
             });
           }
 
-          // FIX ISSUE 1: Prevent duplicate timeline entries in auto-select (like manual-select)
-          // Per-student duplicate check - allows different students to receive their own congratulation messages
-          // Searches for existing GENERAL_UPDATE entries with congratulations content
+          // STRICT DUPLICATE PREVENTION: Check if congratulations already exists for this student
+          // Prevents duplicate timeline entries per stage per student
+          // Uses EXACT comment match to ensure tight duplicate detection
           const existingTimeline = await OpportunityTimeline.findOne({
             opportunityId: new mongoose.Types.ObjectId(opportunityId),
             studentId: String(studentId).trim(),
-            stage: "General Update",  // Search for General Update stage
-            comment: { $regex: "Congratulations!" },  // More flexible regex to catch both message types
+            stage: nextStage,  // Check for existing entry in the NEXT stage
+            comment: message,  // CRITICAL: Use exact message match instead of regex
           });
 
           if (existingTimeline) {
             console.log(
-              `[AUTO SELECT DUPLICATE CHECK] Timeline entry already exists for student ${studentId}.`,
-              `Skipping duplicate congratulations message.`,
+              `[AUTO SELECT DUPLICATE CHECK] Congratulations already exists for student ${studentId} in stage ${nextStage}.`,
+              `Skipping duplicate message to ensure EXACTLY ONE congratulation per student per stage.`,
               { opportunityId, stage, nextStage, studentId, existingId: existingTimeline._id }
             );
             continue; // Skip if congratulations message already exists for THIS STUDENT
           }
 
-          // FIX ISSUE 1 & 2: Create timeline entry with GENERAL_UPDATE badge for congratulations
-          // Badge should show "General Update" not stage-specific badges
-          // Comment retains the contextual stage information
-          await OpportunityTimeline.create({
-            opportunityId: new mongoose.Types.ObjectId(opportunityId),
-            studentId: String(studentId).trim(),
-            postedBy: req.user._id,
-            role: req.user.role,
-            stage: "General Update",  // Use GENERAL_UPDATE badge for all congratulations
-            comment: message,  // Use the contextual message with company/stage info
-            isStageActivation: false,
-          });
+          // Create timeline entry for congratulation message
+          // Uses the actual next stage (e.g., "Group Discussion", "Technical Interview", "HR Interview")
+          // NOT "General Update" - this allows congratulations to appear as normal timeline entries
+          try {
+            const timelineEntry = await OpportunityTimeline.create({
+              opportunityId: new mongoose.Types.ObjectId(opportunityId),
+              studentId: String(studentId).trim(),
+              postedBy: req.user._id,
+              role: req.user.role,
+              stage: nextStage,  // Use actual stage name (e.g., "Group Discussion"), not "General Update"
+              comment: message,  // Contains the contextual congratulation message
+              isStageActivation: false,
+            });
+
+            console.log(
+              `[AUTO SELECT TIMELINE] Created congratulations entry for student ${studentId}`,
+              { opportunityId, stage, nextStage, studentId, entryId: timelineEntry._id }
+            );
+          } catch (timelineErr) {
+            // Handle duplicate key error (E11000) - entry already created by concurrent request
+            if (timelineErr.code === 11000) {
+              console.log(
+                `[AUTO SELECT TIMELINE DUPLICATE] Concurrent duplicate prevented for student ${studentId}`,
+                { opportunityId, stage, nextStage, studentId, errorCode: timelineErr.code }
+              );
+            } else {
+              throw timelineErr;
+            }
+          }
         }
       } catch (err) {
         console.error(`[NOTIFICATION ERROR for student ${studentId}]`, err);
@@ -1026,40 +1046,73 @@ router.post("/manual-select/:opportunityId/:stage", protect, allowRoles("faculty
           });
         }
 
-        // Prevent duplicate timeline entries with updated badge logic
-        // Per-student duplicate check - allows different students to receive their own congratulation messages
-        // Now searches for existing GENERAL_UPDATE entries with congratulations content
+        // STRICT DUPLICATE PREVENTION: Check if congratulations already exists for this student
+        // Ensures EXACTLY ONE congratulation message per student per stage
+        // Uses EXACT comment match to ensure tight duplicate detection (race condition safe)
         const existingTimeline = await OpportunityTimeline.findOne({
           opportunityId: new mongoose.Types.ObjectId(opportunityId),
           studentId: String(sid).trim(),
-          stage: "General Update",
-          comment: { $regex: "Congratulations!" },  // More flexible regex to catch both message types
+          stage: nextRoundName,  // Check for existing entry in the next stage
+          comment: message,  // CRITICAL: Use exact message match instead of regex
         });
 
         if (existingTimeline) {
           console.log(
-            `[MANUAL SELECT DUPLICATE CHECK] Timeline entry already exists for student ${sid}.`,
-            `Skipping duplicate congratulations message.`,
+            `[MANUAL SELECT DUPLICATE CHECK] Congratulations already exists for student ${sid} in stage ${nextRoundName}.`,
+            `Skipping to ensure EXACTLY ONE congratulation message per student per stage.`,
             { opportunityId, stage, nextRoundName, studentId: sid, existingId: existingTimeline._id }
           );
           continue; // Skip if congratulations message already exists for THIS STUDENT
         }
 
-        // Create timeline entry with GENERAL_UPDATE badge for congratulations
-        // Badge should show "General Update" not stage-specific badges
-        // Comment retains the contextual stage information
-        const newTimelineEntry = await OpportunityTimeline.create({
-          opportunityId: new mongoose.Types.ObjectId(opportunityId),
-          studentId: String(sid).trim(),
-          postedBy: req.user._id,
-          role: req.user.role,
-          stage: "General Update",
-          comment: message,
-          isStageActivation: false,
-        });
+        // Create timeline entry for congratulation message
+        // Uses the actual next stage (e.g., "Group Discussion", "Technical Interview", "HR Interview")
+        // NOT "General Update" - this ensures congratulations appear as normal timeline entries
+        let newTimelineEntry = null;
+        try {
+          newTimelineEntry = await OpportunityTimeline.create({
+            opportunityId: new mongoose.Types.ObjectId(opportunityId),
+            studentId: String(sid).trim(),
+            postedBy: req.user._id,
+            role: req.user.role,
+            stage: nextRoundName,  // Use actual stage name, not "General Update"
+            comment: message,  // Contains the contextual congratulation message
+            isStageActivation: false,
+          });
 
-        // FIX: Collect created entry for socket emission
-        createdTimelineEntries.push(newTimelineEntry);
+          console.log(
+            `[MANUAL SELECT TIMELINE] Created congratulations entry for student ${sid}`,
+            { opportunityId, stage, nextRoundName, studentId: sid, entryId: newTimelineEntry._id }
+          );
+
+          // FIX: Collect created entry for socket emission
+          createdTimelineEntries.push(newTimelineEntry);
+        } catch (timelineErr) {
+          // Handle duplicate key error (E11000) - entry already created by concurrent request
+          if (timelineErr.code === 11000) {
+            console.log(
+              `[MANUAL SELECT TIMELINE DUPLICATE] Concurrent duplicate prevented for student ${sid}`,
+              { opportunityId, stage, nextRoundName, studentId: sid, errorCode: timelineErr.code }
+            );
+            // Still try to fetch the existing entry to emit it
+            try {
+              const existingEntry = await OpportunityTimeline.findOne({
+                opportunityId: new mongoose.Types.ObjectId(opportunityId),
+                studentId: String(sid).trim(),
+                stage: nextRoundName,
+                comment: message,
+              }).populate("postedBy", "name role");
+
+              if (existingEntry) {
+                createdTimelineEntries.push(existingEntry);
+              }
+            } catch (fetchErr) {
+              console.error("[MANUAL SELECT TIMELINE FETCH ERROR]", fetchErr);
+            }
+          } else {
+            throw timelineErr;
+          }
+        }
       } catch (inner) {
         console.error("[MANUAL SELECT NOTIFY]", inner);
       }
