@@ -22,18 +22,24 @@ const stageOrder = [
   "Result",
 ];
 
-  const OpportunityTimeline = ({ opportunityId, userRole, activeStages }) => {
+  const OpportunityTimeline = ({ opportunityId, userRole, activeStages, stageManualSelections = [] }) => {
   const { fetchTimeline, invalidateTimelineCache } = useOpportunities();
   const [timelineEntries, setTimelineEntries] = useState([]);
   const [localActiveStages, setLocalActiveStages] = useState(activeStages || []);
   const [newComment, setNewComment] = useState("");
   const [selectedStage, setSelectedStage] = useState("");
-  const [activateStage, setActivateStage] = useState(false);
+  const [selectedStudentId, setSelectedStudentId] = useState(""); // For single student Result
+  const [selectAllStudents, setSelectAllStudents] = useState(false); // FIX: Toggle for "Select All"
   const [isPosting, setIsPosting] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [activateStage, setActivateStage] = useState(false);
   const socket = getSocket();
   const lastFetchRef = useRef(0);
+
+  // FIX ISSUE 3: Extract selected students from stageManualSelections for Result stage
+  // Get students selected in HR Interview (previous stage to Result)
+  const hrSelectedStudents = stageManualSelections?.find((s) => s.stage === "HR Interview")?.selectedStudentIds || [];
 
   useEffect(() => {
     if (activeStages && activeStages.length > 0) {
@@ -106,12 +112,20 @@ const stageOrder = [
       return;
     }
 
+    // FIX: Validate studentId/studentIds for Result stage
+    if (selectedStage === "Result") {
+      if (!selectAllStudents && !selectedStudentId) {
+        setError("Please select a student or choose 'Select All Students' for the Result stage comment");
+        return;
+      }
+    }
+
     setIsPosting(true);
     setError("");
 
     // Create optimistic entry for immediate UI update
     const optimisticEntry = {
-      _id: `temp_${Date.now()}`,
+      _id: `temp_${Math.random().toString(36).substr(2, 9)}`,
       stage: selectedStage,
       comment: newComment,
       postedBy: { name: "You" },
@@ -124,11 +138,25 @@ const stageOrder = [
       // Add optimistic entry immediately
       setTimelineEntries((prev) => [...(Array.isArray(prev) ? prev : []), optimisticEntry]);
 
-      const response = await api.post(`/timeline/${opportunityId}`, {
+      // FIX: Include studentId or studentIds in POST body for Result stage
+      const postBody = {
         stage: selectedStage,
         comment: newComment,
         activateStage: activateStage && selectedStage !== "General Update",
-      });
+      };
+
+      // Add studentId/studentIds for Result stage comments
+      if (selectedStage === "Result") {
+        if (selectAllStudents) {
+          // FIX: Send all HR-selected students
+          postBody.studentIds = hrSelectedStudents;
+        } else {
+          // Single student
+          postBody.studentId = selectedStudentId;
+        }
+      }
+
+      const response = await api.post(`/timeline/${opportunityId}`, postBody);
 
       // If stage was activated, update local active stages
       if (activateStage && selectedStage !== "General Update") {
@@ -141,18 +169,23 @@ const stageOrder = [
         });
       }
 
-      // Replace optimistic entry with real one
-      setTimelineEntries((prev) =>
-        prev.map((entry) =>
-          entry._id === optimisticEntry._id ? response.data?.data : entry
-        )
-      );
+      // Replace optimistic entry with real one(s)
+      setTimelineEntries((prev) => {
+        // Handle both single entry and array of entries from batch operations
+        const newEntries = Array.isArray(response.data?.data) ? response.data.data : [response.data?.data];
+        // Replace optimistic entry with all real entries
+        return prev.map((entry) =>
+          entry._id === optimisticEntry._id ? newEntries[0] : entry
+        ).concat(newEntries.length > 1 ? newEntries.slice(1) : []);
+      });
 
       // Invalidate cache so next fetch gets fresh data
       invalidateTimelineCache(opportunityId);
 
       setNewComment("");
       setSelectedStage("");
+      setSelectedStudentId("");
+      setSelectAllStudents(false); // FIX: Reset Select All toggle
       setActivateStage(false);
     } catch (err) {
       // Remove optimistic entry on error
@@ -280,6 +313,66 @@ const stageOrder = [
               </select>
             </div>
 
+            {/* FIX: Add student selector for Result stage with "Select All Students" option */}
+            {selectedStage === "Result" && (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-[#B70D23] mb-1.5">
+                    Select Students for Final Result
+                  </label>
+
+                  {/* FIX: "Select All Students" toggle */}
+                  {hrSelectedStudents.length > 0 && (
+                    <div className="mb-3 flex items-center gap-2 rounded-lg bg-indigo-50 p-3 border border-indigo-200">
+                      <input
+                        type="checkbox"
+                        id="selectAllStudents"
+                        checked={selectAllStudents}
+                        onChange={(e) => {
+                          setSelectAllStudents(e.target.checked);
+                          if (e.target.checked) {
+                            setSelectedStudentId(""); // Clear single selection
+                          }
+                        }}
+                        className="rounded border-indigo-600 text-indigo-600 focus:ring-indigo-600"
+                      />
+                      <label htmlFor="selectAllStudents" className="text-xs font-medium text-indigo-700 cursor-pointer">
+                        Apply result comment to all {hrSelectedStudents.length} HR-selected students
+                      </label>
+                    </div>
+                  )}
+
+                  {/* Student selector - disabled when "Select All" is checked */}
+                  <select
+                    value={selectedStudentId}
+                    onChange={(e) => {
+                      setSelectedStudentId(e.target.value);
+                      setSelectAllStudents(false); // Disable Select All when individual is chosen
+                    }}
+                    disabled={selectAllStudents}
+                    className="w-full rounded-lg border border-[#B70D23] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#B70D23] disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
+                  >
+                    <option value="">{selectAllStudents ? "Applying to all students" : "Choose a student..."}</option>
+                    {hrSelectedStudents.length > 0 ? (
+                      hrSelectedStudents.map((studentId) => (
+                        <option key={studentId} value={studentId}>
+                          {studentId}
+                        </option>
+                      ))
+                    ) : (
+                      <option disabled>No students selected for HR Interview</option>
+                    )}
+                  </select>
+                </div>
+
+                {hrSelectedStudents.length === 0 && (
+                  <p className="text-xs text-amber-600">
+                    ⚠️ No students have been selected for HR Interview. Select students in HR Interview stage first.
+                  </p>
+                )}
+              </div>
+            )}
+
             <div>
               <label className="block text-xs font-medium text-[#B70D23] mb-1.5">
                 Comment
@@ -366,7 +459,8 @@ const stageOrder = [
                         stageColors[entry.stage] || stageColors["General Update"]
                       }`}
                     >
-                      {entry.stage}
+                      {/* ISSUE 1 FIX: Display "General Update" as label for congratulations messages */}
+                      {entry.stage === "General Update" ? "General Update" : entry.stage}
                     </span>
                     <span className="text-xs font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded">
                       {entry.role === "faculty" ? "Faculty" : "Admin"}

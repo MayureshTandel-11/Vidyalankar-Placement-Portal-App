@@ -82,7 +82,7 @@ function applicantsForActivatedStage(opportunity, stage) {
 router.post("/:opportunityId", protect, allowRoles("faculty", "admin"), async (req, res) => {
   try {
     const { opportunityId } = req.params;
-    const { stage, comment, activateStage, studentId } = req.body;  // FIX ISSUE 1: Added studentId from request
+    const { stage, comment, activateStage, studentId, studentIds } = req.body;  // FIX ISSUE 1: Added studentId and studentIds
 
     // Validate ObjectId
     if (!mongoose.Types.ObjectId.isValid(opportunityId)) {
@@ -105,54 +105,130 @@ router.post("/:opportunityId", protect, allowRoles("faculty", "admin"), async (r
     }
 
     // ============================================
+    // FIX ISSUE 4: Defensive validation for non-Result stages
+    // Prevent timeline entries for students not selected for current stage
+    // ============================================
+    // For non-Result stage-specific comments, validate student selection if studentId is provided
+    if (studentId && stage !== "Result" && stage !== "General Update") {
+      const stageIndex = RECRUITMENT_STAGE_ORDER.indexOf(stage);
+      const studentIdStr = String(studentId).trim();
+
+      // For first stage, all applicants are valid
+      if (stageIndex > 0) {
+        // For subsequent stages, verify student was selected in PREVIOUS stage
+        const prevStage = RECRUITMENT_STAGE_ORDER[stageIndex - 1];
+        const prevStageSelection = opportunity.stageManualSelections?.find(
+          (s) => s.stage === prevStage && s.selectedStudentIds?.length > 0
+        );
+
+        if (!prevStageSelection?.selectedStudentIds?.some(
+          (id) => String(id).trim() === studentIdStr
+        )) {
+          console.warn(
+            `[TIMELINE DEFENSIVE CHECK] Student ${studentIdStr} not selected for ${stage} in previous stage. Allowing comment but flagging for review.`,
+            { opportunityId, stage, studentId: studentIdStr }
+          );
+          // Note: We allow the comment but log a warning for audit
+        }
+      }
+    }
+
+    // ============================================
     // FIX ISSUE 1: Result Stage Per-Student Validation
     // ============================================
     // Result stage now allows ONE final comment PER STUDENT (not per opportunity)
     // Different students can each receive their own final result comment
     // But duplicate final comments for the SAME student should be blocked
+    // ENHANCEMENT: Support both single studentId and batch studentIds for "Select All" feature
     if (stage === "Result") {
-      // For Result stage, studentId is required
-      if (!studentId || !String(studentId).trim()) {
+      // For Result stage, either studentId (single) or studentIds (array) is required
+      if ((!studentId || !String(studentId).trim()) && (!studentIds || !Array.isArray(studentIds) || studentIds.length === 0)) {
         return res.status(400).json({
           success: false,
-          message: "studentId is required for Result stage comments",
+          message: "studentId or studentIds is required for Result stage comments",
           code: "STUDENT_ID_REQUIRED"
         });
       }
 
-      // Verify student was actually selected for Result stage (i.e., selected in HR Interview)
-      // Result stage is activated only for students selected in HR Interview
+      // Handle both single student and batch operations
+      const studentIdsToProcess = studentIds && Array.isArray(studentIds) && studentIds.length > 0
+        ? studentIds.map(id => String(id).trim())
+        : [String(studentId).trim()];
+
+      // Verify all students were actually selected for Result stage (i.e., selected in HR Interview)
       const prevStage = "HR Interview";
       const prevStageSelection = opportunity.stageManualSelections?.find(
         (s) => s.stage === prevStage && s.selectedStudentIds?.length > 0
       );
 
-      const studentIdStr = String(studentId).trim();
-      const wasSelectedForResult = prevStageSelection?.selectedStudentIds?.some(
-        (id) => String(id).trim() === studentIdStr
-      );
+      for (const sid of studentIdsToProcess) {
+        const wasSelectedForResult = prevStageSelection?.selectedStudentIds?.some(
+          (id) => String(id).trim() === sid
+        );
 
-      if (!wasSelectedForResult) {
-        return res.status(403).json({
-          success: false,
-          message: "Student was not selected for Result stage. Only students selected in HR Interview can receive final result comments.",
-          code: "STUDENT_NOT_SELECTED_FOR_RESULT"
+        if (!wasSelectedForResult) {
+          return res.status(403).json({
+            success: false,
+            message: `Student ${sid} was not selected for Result stage. Only students selected in HR Interview can receive final result comments.`,
+            code: "STUDENT_NOT_SELECTED_FOR_RESULT"
+          });
+        }
+
+        // FIX ISSUE 1: Check for existing Result comment for THIS SPECIFIC STUDENT
+        const existingResultComment = await OpportunityTimeline.findOne({
+          opportunityId: opportunity._id,
+          studentId: sid,
+          stage: "Result",
         });
+
+        if (existingResultComment) {
+          return res.status(409).json({
+            success: false,
+            message: `Final result already posted for student ${sid}. Only one result comment is allowed per student.`,
+            code: "RESULT_COMMENT_EXISTS_FOR_STUDENT"
+          });
+        }
       }
 
-      // FIX ISSUE 1: Check for existing Result comment for THIS SPECIFIC STUDENT
-      // Changed from opportunity-level check to student-level check
-      const existingResultComment = await OpportunityTimeline.findOne({
-        opportunityId: opportunity._id,
-        studentId: studentIdStr,  // FIX: Per-student check instead of opportunity-wide check
-        stage: "Result",
-      });
+      // Batch insert all timeline entries for Result stage
+      if (studentIds && Array.isArray(studentIds) && studentIds.length > 0) {
+        const timelineEntries = studentIdsToProcess.map(sid => ({
+          opportunityId: opportunity._id,
+          studentId: sid,
+          postedBy: req.user._id,
+          role: req.user.role,
+          stage,
+          comment: comment.trim(),
+          isStageActivation: false,
+        }));
 
-      if (existingResultComment) {
-        return res.status(409).json({
-          success: false,
-          message: `Final result already posted for student ${studentIdStr}. Only one result comment is allowed per student.`,
-          code: "RESULT_COMMENT_EXISTS_FOR_STUDENT"
+        await OpportunityTimeline.insertMany(timelineEntries);
+
+        // Fetch and emit all created entries
+        const createdEntries = await OpportunityTimeline.find({
+          opportunityId: opportunity._id,
+          studentId: { $in: studentIdsToProcess },
+          stage: "Result",
+          comment: comment.trim(),
+        }).populate("postedBy", "name role").lean();
+
+        // Get updated activeStages
+        const updatedOpportunity = await Opportunity.findById(opportunityId);
+
+        // Emit Socket.IO events for each created entry
+        const io = getIO();
+        if (io && createdEntries.length > 0) {
+          for (const entry of createdEntries) {
+            io.to(`opportunity_${opportunityId}`).emit("timeline:new_entry", {
+              entry,
+              activeStages: updatedOpportunity.activeStages,
+            });
+          }
+        }
+
+        return res.status(201).json({
+          data: createdEntries,
+          message: `Timeline entries created for ${createdEntries.length} students`
         });
       }
     }
@@ -312,9 +388,13 @@ router.get("/:opportunityId", protect, async (req, res) => {
       timeline = timeline.filter((entry) => {
         // Hide entries with student-specific congratulation messages
         // These are created when faculty/admin manually select students for next round
+        // ISSUE 1 & 2 FIX: Check for both congratulation message types:
+        // - "Congratulations! You have been selected for the next round..." (general stages)
+        // - "Congratulations! You have cleared the HR Interview stage." (HR special case)
         const isStudentCongratulation =
           entry.comment &&
-          entry.comment.includes("Congratulations! You have been selected for the next round");
+          (entry.comment.includes("Congratulations! You have been selected for the next round") ||
+           entry.comment.includes("Congratulations! You have cleared the HR Interview stage"));
 
         return !isStudentCongratulation;
       });

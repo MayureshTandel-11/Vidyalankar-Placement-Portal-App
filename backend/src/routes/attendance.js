@@ -732,7 +732,7 @@ router.post("/select-next-round/:opportunityId/:stage", protect, allowRoles("fac
 
     for (const studentId of selectedStudentIds) {
       try {
-        // FIX ISSUE 2: Verify student has "present" status before creating timeline/notification
+        // FIX ISSUE 4: Verify student has "present" status before creating timeline/notification
         // CRITICAL: Blocks timeline updates for absent/pending students
         const attendanceStatus = attendanceMap[studentId];
         if (attendanceStatus !== "present") {
@@ -741,14 +741,22 @@ router.post("/select-next-round/:opportunityId/:stage", protect, allowRoles("fac
             `Only students marked 'present' can advance. Prevented from receiving timeline update.`,
             { opportunityId, stage, studentId, actualStatus: attendanceStatus }
           );
-          continue; // Skip notification for non-present students - ISSUE 2 FIX
+          continue; // Skip notification for non-present students - ISSUE 4 FIX
         }
 
         // Find student user
         const student = await User.findOne({ studentId });
         if (student) {
+          // ISSUE 2 FIX: Use different message wording for HR cleared (final stage before Result)
+          // Check if current round is HR and next is Result - special case messaging
+          let message;
+          if (stage === "HR Interview" && nextStage === "Result") {
+            message = `Congratulations! You have cleared the HR Interview stage.`;
+          } else {
+            message = `Congratulations! You have been selected for the next round (${nextStage}) for ${opportunity.announcementHeading || "this opportunity"}.`;
+          }
+
           // Create notification
-          const message = `Congratulations! You have been selected for ${nextStage} round.`;
           await Notification.create({
             studentId: student._id,
             opportunityId: new mongoose.Types.ObjectId(opportunityId),
@@ -768,15 +776,35 @@ router.post("/select-next-round/:opportunityId/:stage", protect, allowRoles("fac
             });
           }
 
-          // FIX ISSUE 2: Create timeline entry with studentId tracking
-          // Allows per-student timeline filtering and prevents duplicate notifications
+          // FIX ISSUE 1: Prevent duplicate timeline entries in auto-select (like manual-select)
+          // Per-student duplicate check - allows different students to receive their own congratulation messages
+          // Searches for existing GENERAL_UPDATE entries with congratulations content
+          const existingTimeline = await OpportunityTimeline.findOne({
+            opportunityId: new mongoose.Types.ObjectId(opportunityId),
+            studentId: String(studentId).trim(),
+            stage: "General Update",  // Search for General Update stage
+            comment: { $regex: "Congratulations!" },  // More flexible regex to catch both message types
+          });
+
+          if (existingTimeline) {
+            console.log(
+              `[AUTO SELECT DUPLICATE CHECK] Timeline entry already exists for student ${studentId}.`,
+              `Skipping duplicate congratulations message.`,
+              { opportunityId, stage, nextStage, studentId, existingId: existingTimeline._id }
+            );
+            continue; // Skip if congratulations message already exists for THIS STUDENT
+          }
+
+          // FIX ISSUE 1 & 2: Create timeline entry with GENERAL_UPDATE badge for congratulations
+          // Badge should show "General Update" not stage-specific badges
+          // Comment retains the contextual stage information
           await OpportunityTimeline.create({
             opportunityId: new mongoose.Types.ObjectId(opportunityId),
-            studentId: String(studentId).trim(),  // FIX ISSUE 2: Track which student received this notification
+            studentId: String(studentId).trim(),
             postedBy: req.user._id,
             role: req.user.role,
-            stage: nextStage,
-            comment: `Student selected for ${nextStage}`,
+            stage: "General Update",  // Use GENERAL_UPDATE badge for all congratulations
+            comment: message,  // Use the contextual message with company/stage info
             isStageActivation: false,
           });
         }
@@ -952,12 +980,15 @@ router.post("/manual-select/:opportunityId/:stage", protect, allowRoles("faculty
     const Notification = require("../models/Notification");
     const OpportunityTimeline = require("../models/OpportunityTimeline");
 
+    // FIX: Collect all created timeline entries for socket emission
+    const createdTimelineEntries = [];
+
     for (const sid of studentsToNotify) {
       try {
         const studentUser = await User.findOne({ studentId: sid });
         if (!studentUser) continue;
 
-        // ISSUE 3 FIX: Verify student has SELECTED status before creating timeline
+        // Verify student has SELECTED status before creating timeline
         // Students must be marked present (attended the stage) to be eligible for selection
         const attendanceRecord = attendanceMap[sid];
         if (attendanceRecord !== "present") {
@@ -968,7 +999,15 @@ router.post("/manual-select/:opportunityId/:stage", protect, allowRoles("faculty
           continue; // Skip timeline creation for non-present students
         }
 
-        const message = `Congratulations! You have been selected for the next round (${nextRoundName}) for ${companyName}.`;
+        // Use different message wording for HR cleared (final stage before Result)
+        // Check if current round is HR and next is Result - special case messaging
+        let message;
+        if (stage === "HR Interview" && nextRoundName === "Result") {
+          message = `Congratulations! You have cleared the HR Interview stage.`;
+        } else {
+          message = `Congratulations! You have been selected for the next round (${nextRoundName}) for ${companyName}.`;
+        }
+
         await Notification.create({
           studentId: studentUser._id,
           opportunityId: new mongoose.Types.ObjectId(opportunityId),
@@ -987,44 +1026,65 @@ router.post("/manual-select/:opportunityId/:stage", protect, allowRoles("faculty
           });
         }
 
-        // FIX ISSUE 1 & 2: Prevent duplicate timeline entries
+        // Prevent duplicate timeline entries with updated badge logic
         // Per-student duplicate check - allows different students to receive their own congratulation messages
-        // Uses studentId to prevent duplicate congratulations for the SAME student
+        // Now searches for existing GENERAL_UPDATE entries with congratulations content
         const existingTimeline = await OpportunityTimeline.findOne({
           opportunityId: new mongoose.Types.ObjectId(opportunityId),
-          studentId: String(sid).trim(),  // FIX ISSUE 1: Per-student check instead of stage-level
-          stage: nextRoundName,
-          comment: { $regex: "Congratulations! You have been selected for the next round" },
+          studentId: String(sid).trim(),
+          stage: "General Update",
+          comment: { $regex: "Congratulations!" },  // More flexible regex to catch both message types
         });
 
         if (existingTimeline) {
           console.log(
-            `[MANUAL SELECT DUPLICATE CHECK] Timeline entry already exists for student ${sid} in stage ${nextRoundName}.`,
-            `Skipping duplicate notification.`,
+            `[MANUAL SELECT DUPLICATE CHECK] Timeline entry already exists for student ${sid}.`,
+            `Skipping duplicate congratulations message.`,
             { opportunityId, stage, nextRoundName, studentId: sid, existingId: existingTimeline._id }
           );
           continue; // Skip if congratulations message already exists for THIS STUDENT
         }
 
-        // FIX ISSUE 2: Create timeline entry with studentId tracking
-        // Enables per-student timeline filtering and prevents future duplicate issues
-        await OpportunityTimeline.create({
+        // Create timeline entry with GENERAL_UPDATE badge for congratulations
+        // Badge should show "General Update" not stage-specific badges
+        // Comment retains the contextual stage information
+        const newTimelineEntry = await OpportunityTimeline.create({
           opportunityId: new mongoose.Types.ObjectId(opportunityId),
-          studentId: String(sid).trim(),  // FIX ISSUE 2: Track which student received this notification
+          studentId: String(sid).trim(),
           postedBy: req.user._id,
           role: req.user.role,
-          stage: nextRoundName,
-          comment: `Congratulations! You have been selected for the next round (${nextRoundName}) at ${companyName}.`,
+          stage: "General Update",
+          comment: message,
           isStageActivation: false,
         });
+
+        // FIX: Collect created entry for socket emission
+        createdTimelineEntries.push(newTimelineEntry);
       } catch (inner) {
         console.error("[MANUAL SELECT NOTIFY]", inner);
       }
     }
 
+    // FIX: Emit socket events for each created timeline entry
+    // This ensures the frontend timeline component receives the congratulation messages in real-time
     const io = getIO();
-    if (io) {
-      io.to(`opportunity_${opportunityId}`).emit("manual:selection:updated", {
+    if (io && createdTimelineEntries.length > 0) {
+      for (const entry of createdTimelineEntries) {
+        const populatedEntry = await entry.populate("postedBy", "name role");
+        io.to(`opportunity_${opportunityId}`).emit("timeline:new_entry", {
+          entry: populatedEntry,
+          activeStages: opportunity.activeStages || [],
+        });
+      }
+      console.log(
+        `[MANUAL SELECT SOCKET] Emitted ${createdTimelineEntries.length} timeline entries via socket`,
+        { opportunityId, stage }
+      );
+    }
+
+    const ioFinal = getIO();
+    if (ioFinal) {
+      ioFinal.to(`opportunity_${opportunityId}`).emit("manual:selection:updated", {
         stage,
         selectedCount: nextList.length,
         selectedBy: req.user.name,

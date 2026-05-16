@@ -28,7 +28,7 @@ const RECRUITMENT_STAGES = [
 // ======================================
 const isResultStage = (stage) => stage?.toLowerCase() === "result";
 
-const OpportunityAttendance = ({ opportunityId, activeStages }) => {
+const OpportunityAttendance = ({ opportunityId, activeStages, onAttendanceUpdate }) => {
   const [selectedStage, setSelectedStage] = useState(null);
   const [attendanceList, setAttendanceList] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -298,6 +298,11 @@ const OpportunityAttendance = ({ opportunityId, activeStages }) => {
       setManualSelectionCommitted(true);
       toast.success(`Selection saved for ${manualSelectedIds.length} student(s).`);
       setError("");
+
+      // FIX: Call onAttendanceUpdate to refresh timeline and active stages
+      if (onAttendanceUpdate) {
+        onAttendanceUpdate();
+      }
 
       const socket = getSocket();
       if (socket) {
