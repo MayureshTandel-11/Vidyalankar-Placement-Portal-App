@@ -12,6 +12,7 @@ const {
   filterTimelineForRole,
   dedupeTimelineEntries,
 } = require("../utils/timelineHelpers");
+const { filterActiveStagesForStudent } = require("../utils/studentProgression");
 
 const router = express.Router();
 
@@ -459,18 +460,43 @@ router.get("/:opportunityId", protect, async (req, res) => {
       .populate("postedBy", "name role")
       .lean();
 
+    let attendanceRecords = [];
+    if (req.user.role === "student" && req.user.studentId) {
+      attendanceRecords = await OpportunityAttendance.find({
+        opportunityId: opportunity._id,
+        studentId: String(req.user.studentId).trim(),
+      }).lean();
+    }
+
     timeline = dedupeTimelineEntries(timeline);
     timeline = filterTimelineForRole(
       timeline,
       req.user.role,
-      req.user.role === "student" ? req.user.studentId : null
+      req.user.role === "student" ? req.user.studentId : null,
+      opportunity.toObject ? opportunity.toObject() : opportunity,
+      attendanceRecords
     );
 
+    let activeStages = opportunity.activeStages || [];
+    if (req.user.role === "student" && req.user.studentId) {
+      activeStages = filterActiveStagesForStudent(
+        activeStages,
+        opportunity.toObject ? opportunity.toObject() : opportunity,
+        req.user.studentId,
+        attendanceRecords
+      );
+    }
+
+    const responseData = {
+      timeline: timeline || [],
+      activeStages,
+    };
+    if (req.user.role === "student") {
+      responseData.studentAttendance = attendanceRecords;
+    }
+
     return res.status(200).json({
-      data: {
-        timeline: timeline || [],
-        activeStages: opportunity.activeStages || [],
-      },
+      data: responseData,
       message: "Timeline fetched successfully",
     });
   } catch (error) {

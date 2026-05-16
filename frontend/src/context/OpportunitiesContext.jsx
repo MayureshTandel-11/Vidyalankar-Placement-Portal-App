@@ -53,6 +53,9 @@ const opportunitiesReducer = (state, action) => {
           [action.opportunityId]: {
             data: Array.isArray(action.data) ? action.data : [],
             activeStages: Array.isArray(action.activeStages) ? action.activeStages : [],
+            studentAttendance: Array.isArray(action.studentAttendance)
+              ? action.studentAttendance
+              : [],
             timestamp: Date.now(),
           },
         },
@@ -232,6 +235,7 @@ export const OpportunitiesProvider = ({ children }) => {
             return {
               timeline: Array.isArray(cached.data) ? cached.data : [],
               activeStages: Array.isArray(cached.activeStages) ? cached.activeStages : [],
+              studentAttendance: Array.isArray(cached.studentAttendance) ? cached.studentAttendance : [],
             };
           }
 
@@ -244,18 +248,26 @@ export const OpportunitiesProvider = ({ children }) => {
           // Defensive: validate response structure
           const timelineData = Array.isArray(data?.timeline) ? data.timeline : [];
           const activeStagesData = Array.isArray(data?.activeStages) ? data.activeStages : [];
+          const studentAttendanceData = Array.isArray(data?.studentAttendance)
+            ? data.studentAttendance
+            : [];
 
           dispatch({
             type: "SET_TIMELINE",
             opportunityId,
             data: timelineData,
             activeStages: activeStagesData,
+            studentAttendance: studentAttendanceData,
           });
 
-          return { timeline: timelineData, activeStages: activeStagesData };
+          return {
+            timeline: timelineData,
+            activeStages: activeStagesData,
+            studentAttendance: studentAttendanceData,
+          };
         });
 
-        return result || { timeline: [], activeStages: [] };
+        return result || { timeline: [], activeStages: [], studentAttendance: [] };
       } catch (error) {
         if (error.name !== "AbortError") {
           console.error("[TIMELINE ERROR] Fetch failed:", error.message);

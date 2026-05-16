@@ -131,12 +131,23 @@ async function createRoundSelectionTimelineEntry({
   }
 }
 
-function filterTimelineForRole(timeline, userRole, viewerStudentId) {
+const { canStudentSeeTimelineEntry } = require("./studentProgression");
+
+function filterTimelineForRole(
+  timeline,
+  userRole,
+  viewerStudentId,
+  opportunity = null,
+  attendanceRecords = []
+) {
   let filtered = timeline || [];
 
   if (userRole === "student") {
     const sid = viewerStudentId ? String(viewerStudentId).trim() : null;
     filtered = filtered.filter((entry) => {
+      if (opportunity && sid) {
+        return canStudentSeeTimelineEntry(entry, opportunity, sid, attendanceRecords);
+      }
       if (!entry.studentId) return true;
       if (!sid) return false;
       return String(entry.studentId).trim() === sid;

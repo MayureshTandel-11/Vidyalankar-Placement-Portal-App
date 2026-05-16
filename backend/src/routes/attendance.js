@@ -8,7 +8,11 @@ const { getIO } = require("../utils/io");
 const { ok, fail } = require("../utils/apiResponse");
 const { generateAttendanceCSV, generateAttendanceFilename } = require("../utils/csvExport");
 const { canFacultyCollaborateOnOpportunity } = require("../utils/opportunityAccess");
-const { getRoundSelectionMessage, createRoundSelectionTimelineEntry } = require("../utils/timelineHelpers");
+const {
+  getRoundSelectionMessage,
+  createRoundSelectionTimelineEntry,
+  TIMELINE_BADGE_STAGE,
+} = require("../utils/timelineHelpers");
 
 const router = express.Router();
 
@@ -756,8 +760,8 @@ router.post("/select-next-round/:opportunityId/:stage", protect, allowRoles("fac
           const existingNotification = await Notification.findOne({
             studentId: student._id,
             opportunityId: new mongoose.Types.ObjectId(opportunityId),
-            stage: nextStage,
             notificationType: "selection",
+            message,
           });
 
           if (existingNotification) {
@@ -768,7 +772,7 @@ router.post("/select-next-round/:opportunityId/:stage", protect, allowRoles("fac
           await Notification.create({
             studentId: student._id,
             opportunityId: new mongoose.Types.ObjectId(opportunityId),
-            stage: nextStage,
+            stage: TIMELINE_BADGE_STAGE,
             message,
             notificationType: "selection",
           });
@@ -784,7 +788,7 @@ router.post("/select-next-round/:opportunityId/:stage", protect, allowRoles("fac
           if (io) {
             io.to(`student_${student._id}`).emit("notification:new", {
               message,
-              stage: nextStage,
+              stage: TIMELINE_BADGE_STAGE,
               opportunityId,
               notificationType: "selection",
             });
@@ -1009,8 +1013,8 @@ router.post("/manual-select/:opportunityId/:stage", protect, allowRoles("faculty
         const existingNotification = await Notification.findOne({
           studentId: studentUser._id,
           opportunityId: new mongoose.Types.ObjectId(opportunityId),
-          stage: nextRoundName,
           notificationType: "selection",
+          message,
         });
 
         if (!existingNotification) {
@@ -1018,7 +1022,7 @@ router.post("/manual-select/:opportunityId/:stage", protect, allowRoles("faculty
             await Notification.create({
               studentId: studentUser._id,
               opportunityId: new mongoose.Types.ObjectId(opportunityId),
-              stage: nextRoundName,
+              stage: TIMELINE_BADGE_STAGE,
               message,
               notificationType: "selection",
             });
@@ -1037,7 +1041,7 @@ router.post("/manual-select/:opportunityId/:stage", protect, allowRoles("faculty
         if (io) {
           io.to(`student_${studentUser._id}`).emit("notification:new", {
             message,
-            stage: nextRoundName,
+            stage: TIMELINE_BADGE_STAGE,
             opportunityId,
             notificationType: "selection",
           });

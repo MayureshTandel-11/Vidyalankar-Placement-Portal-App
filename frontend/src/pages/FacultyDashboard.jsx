@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import Layout from "../components/Layout";
@@ -123,7 +123,33 @@ const FacultyDashboard = () => {
     ));
   };
 
-  const allOpportunities = useMemo(() => [...active, ...archive], [active, archive]);
+  const renderOpportunityGrid = (items, emptyTitle, emptySubtitle) => {
+    if (loading || countsLoading) {
+      return (
+        <div className="py-8 flex justify-center">
+          <Spinner />
+        </div>
+      );
+    }
+    if (!items.length) {
+      return <EmptyState title={emptyTitle} subtitle={emptySubtitle} />;
+    }
+    return (
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+        {items.map((item) => (
+          <OpportunityCard
+            key={item._id}
+            opportunity={item}
+            canManage={true}
+            applicantCount={applicantCounts[item._id] ?? null}
+            onEdit={() => handleEdit(item)}
+            onDelete={() => handleDelete(item)}
+            deleteLoading={deletingId === item._id}
+          />
+        ))}
+      </div>
+    );
+  };
 
   return (
     <>
@@ -140,28 +166,24 @@ const FacultyDashboard = () => {
           <p className="text-2xl font-semibold">{archive.length}</p>
         </div>
       </div>
-      <div className="mt-6">
-        <h3 className="mb-4 text-lg font-medium">Opportunity Details</h3>
-        {loading ? (
-          <div className="py-8 flex justify-center"><Spinner /></div>
-        ) : allOpportunities.length ? (
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {allOpportunities.map((item) => (
-              <OpportunityCard
-                key={item._id}
-                opportunity={item}
-                canManage={true}
-                applicantCount={applicantCounts[item._id] ?? null}
-                onEdit={() => handleEdit(item)}
-                onDelete={() => handleDelete(item)}
-                deleteLoading={deletingId === item._id}
-              />
-            ))}
-          </div>
-        ) : (
-          <EmptyState title="No opportunities available" subtitle="Create opportunities from Post Opportunities page." />
-        )}
-      </div>
+      <section className="mt-8 space-y-8">
+        <div>
+          <h2 className="mb-4 text-lg sm:text-xl font-semibold text-slate-900">Active Opportunities</h2>
+          {renderOpportunityGrid(
+            active,
+            "No active opportunities",
+            "Create opportunities from the Post Opportunities page."
+          )}
+        </div>
+        <div>
+          <h2 className="mb-4 text-lg sm:text-xl font-semibold text-slate-900">Archived Opportunities</h2>
+          {renderOpportunityGrid(
+            archive,
+            "No archived opportunities",
+            "Expired postings will appear here automatically."
+          )}
+        </div>
+      </section>
     </Layout>
     <Footer />
     </>

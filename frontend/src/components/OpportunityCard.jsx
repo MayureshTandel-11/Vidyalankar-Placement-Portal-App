@@ -580,6 +580,7 @@ const OpportunityCard = ({
             <OpportunityTimeline
               key={timelineRefreshKey}
               opportunityId={opportunity._id}
+              opportunity={opportunity}
               userRole={userRole}
               currentStudentId={user?.studentId || null}
               activeStages={activeStages}

@@ -601,16 +601,24 @@ const applyToOpportunity = async (req, res) => {
 
     const updatedOpportunity = await opportunity.save();
 
-    // Create attendance records for all active stages
-    if (opportunity.activeStages && opportunity.activeStages.length > 0) {
-      const attendanceRecords = opportunity.activeStages.map((stage) => ({
-        opportunityId: opportunity._id,
-        studentId: req.user.studentId,
-        stage,
-        status: "pending",
-        markedBy: null,
-        markedAt: null,
-      }));
+    // Only seed first-round attendance on apply — never all activeStages (prevents
+    // late applicants from receiving pending rows for future rounds they never entered).
+    const applyStage =
+      opportunity.activeStages?.includes("Aptitude Test")
+        ? "Aptitude Test"
+        : opportunity.activeStages?.[0] || null;
+
+    if (applyStage) {
+      const attendanceRecords = [
+        {
+          opportunityId: opportunity._id,
+          studentId: req.user.studentId,
+          stage: applyStage,
+          status: "pending",
+          markedBy: null,
+          markedAt: null,
+        },
+      ];
 
       try {
         await OpportunityAttendance.insertMany(attendanceRecords, { ordered: false });

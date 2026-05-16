@@ -8,6 +8,7 @@ import OpportunityCard from "../components/OpportunityCard";
 import { EmptyState, SectionTitle, Spinner, StatusMessage } from "../components/ui";
 import { getApplicantsCount, deleteOpportunity, updateOpportunity } from "../services/opportunitiesService";
 import { DEPARTMENTS } from "../constants/departments";
+import { parseOpportunityDepartments } from "../utils/opportunityDepartment";
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
@@ -105,23 +106,35 @@ const AdminDashboard = () => {
     ));
   };
 
-  const allOpportunities = useMemo(() => [...active, ...archive], [active, archive]);
-
-  const filteredOpportunities = useMemo(() => {
-    return allOpportunities.filter((opportunity) => {
+  const matchesFilters = useCallback(
+    (opportunity) => {
+      const q = searchQuery.trim().toLowerCase();
       const matchesSearch =
-        !searchQuery ||
-        opportunity.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        opportunity.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        opportunity.company?.toLowerCase().includes(searchQuery.toLowerCase());
+        !q ||
+        (opportunity.announcementHeading || "").toLowerCase().includes(q) ||
+        (opportunity.description || "").toLowerCase().includes(q) ||
+        (opportunity.eligibilityCriteria || "").toLowerCase().includes(q);
 
       const matchesDepartment =
         !selectedDepartment ||
-        opportunity.department === selectedDepartment;
+        parseOpportunityDepartments(opportunity.department).some(
+          (dept) => dept.toLowerCase() === selectedDepartment.toLowerCase()
+        );
 
       return matchesSearch && matchesDepartment;
-    });
-  }, [allOpportunities, searchQuery, selectedDepartment]);
+    },
+    [searchQuery, selectedDepartment]
+  );
+
+  const filteredActive = useMemo(
+    () => active.filter(matchesFilters),
+    [active, matchesFilters]
+  );
+
+  const filteredArchive = useMemo(
+    () => archive.filter(matchesFilters),
+    [archive, matchesFilters]
+  );
 
   return (
     <>
@@ -134,19 +147,19 @@ const AdminDashboard = () => {
           <div className="glass-panel p-4 sm:p-6 space-y-3">
             <p className="text-sm text-slate-600">Active Opportunities</p>
             <p className="text-2xl sm:text-3xl font-semibold text-slate-900">
-              {filteredOpportunities.filter(opp => opp.status === 'active').length}
+              {filteredActive.length}
             </p>
           </div>
           <div className="glass-panel p-4 sm:p-6 space-y-3">
             <p className="text-sm text-slate-600">Archived Opportunities</p>
             <p className="text-2xl sm:text-3xl font-semibold text-slate-900">
-              {filteredOpportunities.filter(opp => opp.status === 'archived').length}
+              {filteredArchive.length}
             </p>
           </div>
         </div>
 
         <div className="mt-6 sm:mt-8">
-          <h3 className="mb-4 text-lg sm:text-xl font-semibold text-slate-900">Opportunity Details</h3>
+          <h2 className="mb-4 text-lg sm:text-xl font-semibold text-slate-900">Opportunities</h2>
 
           {/* Search and Filter Controls - Responsive Stacking */}
           <div className="mb-6 space-y-3 lg:space-y-0 lg:flex lg:items-center lg:gap-3">
@@ -159,7 +172,7 @@ const AdminDashboard = () => {
               </div>
               <input
                 type="text"
-                placeholder="Search by title or company..."
+                placeholder="Search by heading or description..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-10 pr-10 py-2.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none transition-colors"
@@ -255,26 +268,59 @@ const AdminDashboard = () => {
             </div>
           )}
 
-          {/* Opportunities Grid */}
-          {loading ? (
-            <div className="py-12 flex justify-center"><Spinner /></div>
-          ) : filteredOpportunities.length ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 lg:gap-6">
-              {filteredOpportunities.map((item) => (
-                <OpportunityCard
-                  key={item._id}
-                  opportunity={item}
-                  canManage={true}
-                  applicantCount={applicantCounts[item._id] ?? null}
-                  onEdit={() => handleEdit(item)}
-                  onDelete={() => handleDelete(item)}
-                  deleteLoading={deletingId === item._id}
+          <div className="space-y-8">
+            <section>
+              <h3 className="mb-4 text-lg font-semibold text-slate-900">Active Opportunities</h3>
+              {loading ? (
+                <div className="py-12 flex justify-center"><Spinner /></div>
+              ) : filteredActive.length ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 lg:gap-6">
+                  {filteredActive.map((item) => (
+                    <OpportunityCard
+                      key={item._id}
+                      opportunity={item}
+                      canManage={true}
+                      applicantCount={applicantCounts[item._id] ?? null}
+                      onEdit={() => handleEdit(item)}
+                      onDelete={() => handleDelete(item)}
+                      deleteLoading={deletingId === item._id}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <EmptyState
+                  title="No active opportunities found"
+                  subtitle="Try adjusting your search or filter criteria."
                 />
-              ))}
-            </div>
-          ) : (
-            <EmptyState title="No opportunities found" subtitle="Try adjusting your search or filter criteria." />
-          )}
+              )}
+            </section>
+
+            <section>
+              <h3 className="mb-4 text-lg font-semibold text-slate-900">Archived Opportunities</h3>
+              {loading ? (
+                <div className="py-12 flex justify-center"><Spinner /></div>
+              ) : filteredArchive.length ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 lg:gap-6">
+                  {filteredArchive.map((item) => (
+                    <OpportunityCard
+                      key={item._id}
+                      opportunity={item}
+                      canManage={true}
+                      applicantCount={applicantCounts[item._id] ?? null}
+                      onEdit={() => handleEdit(item)}
+                      onDelete={() => handleDelete(item)}
+                      deleteLoading={deletingId === item._id}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <EmptyState
+                  title="No archived opportunities found"
+                  subtitle="Try adjusting your search or filter criteria."
+                />
+              )}
+            </section>
+          </div>
         </div>
       </Layout>
       <Footer />

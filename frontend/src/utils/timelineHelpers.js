@@ -1,3 +1,5 @@
+import { canStudentSeeTimelineEntry } from "./studentProgression";
+
 export const ROUND_SELECTION_MESSAGES = {
   NEXT_ROUND: "Congratulations! You have been selected for the next round.",
   HR_PASSED: "Congratulations! You have passed the current stage.",
@@ -17,12 +19,23 @@ export function isRoundSelectionComment(comment) {
   return LEGACY_HR_PREFIXES.some((prefix) => comment.startsWith(prefix));
 }
 
-export function filterTimelineForRole(entries, userRole, viewerStudentId) {
+export const TIMELINE_BADGE_GENERAL_UPDATE = "General Update";
+
+export function filterTimelineForRole(
+  entries,
+  userRole,
+  viewerStudentId,
+  opportunity = null,
+  attendanceRecords = []
+) {
   const list = Array.isArray(entries) ? entries : [];
 
   if (userRole === "student") {
     const sid = viewerStudentId ? String(viewerStudentId).trim() : null;
     return list.filter((entry) => {
+      if (opportunity && sid) {
+        return canStudentSeeTimelineEntry(entry, opportunity, sid, attendanceRecords);
+      }
       if (!entry.studentId) return true;
       if (!sid) return false;
       return String(entry.studentId).trim() === sid;
@@ -51,6 +64,17 @@ function inferSourceStage(entry) {
   const idx = STAGE_ORDER.indexOf(entry.stage);
   if (idx > 0) return STAGE_ORDER[idx - 1];
   return null;
+}
+
+export function getTimelineEntryBadgeLabel(entry) {
+  if (
+    entry?.type === "ROUND_SELECTION" ||
+    entry?.stage === TIMELINE_BADGE_GENERAL_UPDATE ||
+    isRoundSelectionComment(entry?.comment)
+  ) {
+    return TIMELINE_BADGE_GENERAL_UPDATE;
+  }
+  return entry?.stage || "Update";
 }
 
 export function dedupeTimelineEntries(entries) {

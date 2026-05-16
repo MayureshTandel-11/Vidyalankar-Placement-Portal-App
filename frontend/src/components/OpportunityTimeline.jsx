@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import api from "../api";
 import { useOpportunities } from "../context/OpportunitiesContext";
 import { getSocket } from "../utils/socket";
@@ -9,6 +9,11 @@ import {
   filterTimelineForRole,
   isRoundSelectionComment,
 } from "../utils/timelineHelpers";
+import {
+  canStudentSeeTimelineEntry,
+  filterActiveStagesForStudent,
+} from "../utils/studentProgression";
+import { getTimelineEntryBadgeLabel } from "../utils/timelineHelpers";
 
 const stageColors = {
   "General Update": "bg-[#FFE5E5] text-[#B70D23] border-[#D9394A]",
@@ -29,6 +34,7 @@ const stageOrder = [
 
   const OpportunityTimeline = ({
   opportunityId,
+  opportunity = null,
   userRole,
   currentStudentId = null,
   activeStages,
@@ -46,9 +52,21 @@ const stageOrder = [
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [activateStage, setActivateStage] = useState(false);
+  const [studentAttendance, setStudentAttendance] = useState([]);
   const socket = getSocket();
   const lastFetchRef = useRef(0);
   const isFacultyOrAdmin = userRole === "faculty" || userRole === "admin";
+  const isStudent = userRole === "student";
+
+  const progressionOpportunity = useMemo(
+    () =>
+      opportunity || {
+        _id: opportunityId,
+        applications: applications || [],
+        stageManualSelections: stageManualSelections || [],
+      },
+    [opportunity, opportunityId, applications, stageManualSelections]
+  );
 
   // FIX ISSUE 3: Extract selected students from stageManualSelections for Result stage
   // Get students selected in HR Interview (previous stage to Result)
@@ -100,16 +118,24 @@ const stageOrder = [
         setIsLoading(true);
         const result = await fetchTimeline(opportunityId);
         console.log('Timeline data received:', result);
+        const attendance = Array.isArray(result?.studentAttendance)
+          ? result.studentAttendance
+          : [];
         const timeline = dedupeTimelineEntries(
           filterTimelineForRole(
             Array.isArray(result?.timeline) ? result.timeline : [],
             userRole,
-            currentStudentId
+            currentStudentId,
+            progressionOpportunity,
+            attendance
           )
         );
         const stages = Array.isArray(result?.activeStages) ? result.activeStages : [];
         setTimelineEntries(timeline);
         setLocalActiveStages(stages);
+        if (isStudent) {
+          setStudentAttendance(attendance);
+        }
         lastFetchRef.current = now;
       } catch (err) {
         setError(err.response?.data?.message || "Failed to fetch timeline");
@@ -120,7 +146,7 @@ const stageOrder = [
     };
 
     doFetch();
-  }, [opportunityId, fetchTimeline, userRole, currentStudentId]);
+  }, [opportunityId, fetchTimeline, userRole, currentStudentId, progressionOpportunity, isStudent]);
 
 //   useEffect(() => {
 //     if (!socket) return; // Guard against null socket
@@ -166,21 +192,43 @@ useEffect(() => {
       return;
     }
 
-    if (userRole === "student" && entry.studentId) {
-      const sid = currentStudentId ? String(currentStudentId).trim() : null;
-      if (!sid || String(entry.studentId).trim() !== sid) {
+    if (isStudent && currentStudentId) {
+      if (
+        !canStudentSeeTimelineEntry(
+          entry,
+          progressionOpportunity,
+          currentStudentId,
+          studentAttendance
+        )
+      ) {
         return;
       }
     }
 
     setTimelineEntries((prev) => {
-      const merged = dedupeTimelineEntries([...prev, entry]);
+      const merged = dedupeTimelineEntries(
+        filterTimelineForRole(
+          [...prev, entry],
+          userRole,
+          currentStudentId,
+          progressionOpportunity,
+          studentAttendance
+        )
+      );
       return merged;
     });
 
-    // Update active stages
     if (Array.isArray(newActiveStages)) {
-      setLocalActiveStages(newActiveStages);
+      const stagesForViewer =
+        isStudent && currentStudentId
+          ? filterActiveStagesForStudent(
+              newActiveStages,
+              progressionOpportunity,
+              currentStudentId,
+              studentAttendance
+            )
+          : newActiveStages;
+      setLocalActiveStages(stagesForViewer);
     }
   };
 
@@ -193,7 +241,15 @@ useEffect(() => {
     socket.off("timeline:new_entry", handleTimelineEntry);
   };
 
-}, [socket, userRole, currentStudentId, isFacultyOrAdmin]);
+}, [
+  socket,
+  userRole,
+  currentStudentId,
+  isFacultyOrAdmin,
+  isStudent,
+  progressionOpportunity,
+  studentAttendance,
+]);
 
   const handlePostUpdate = async () => {
     if (!newComment.trim() || !selectedStage) {
@@ -264,7 +320,13 @@ useEffect(() => {
 
   const getFilteredTimelineEntries = () =>
     dedupeTimelineEntries(
-      filterTimelineForRole(timelineEntries, userRole, currentStudentId)
+      filterTimelineForRole(
+        timelineEntries,
+        userRole,
+        currentStudentId,
+        progressionOpportunity,
+        studentAttendance
+      )
     );
 
   /**
@@ -488,7 +550,9 @@ useEffect(() => {
             </p>
           </div>
         ) : (
-          [...filteredEntries].reverse().map((entry, idx) => (
+          [...filteredEntries].reverse().map((entry) => {
+            const badgeLabel = getTimelineEntryBadgeLabel(entry);
+            return (
             <div key={entry._id} className="rounded-lg border border-slate-200 bg-white p-4 hover:shadow-md transition-shadow">
               {entry.isStageActivation && (
                 <div className="mb-3 flex items-center gap-2 rounded-lg bg-green-50 p-2 border border-green-200">
@@ -504,11 +568,10 @@ useEffect(() => {
                   <div className="flex items-center gap-2 mb-1">
                     <span
                       className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold border ${
-                        stageColors[entry.stage] || "bg-[#FFE5E5] text-[#B70D23] border-[#D9394A]"
+                        stageColors[badgeLabel] || "bg-[#FFE5E5] text-[#B70D23] border-[#D9394A]"
                       }`}
                     >
-                      {/* Display the stage badge with proper coloring */}
-                      {entry.stage}
+                      {badgeLabel}
                     </span>
                     <span className="text-xs font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded">
                       {entry.role === "faculty" ? "Faculty" : "Admin"}
@@ -532,7 +595,8 @@ useEffect(() => {
 
               <p className="text-sm text-slate-700 leading-relaxed">{entry.comment}</p>
             </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>
