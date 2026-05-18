@@ -15,3 +15,11 @@ export const DEPARTMENTS = [
 ];
 
 export const OPPORTUNITY_BROADCAST_ALL = "all";
+
+// Standardized year options for students
+export const YEAR_OPTIONS = [
+  "First Year",
+  "Second Year",
+  "Third Year",
+  "Masters",
+];

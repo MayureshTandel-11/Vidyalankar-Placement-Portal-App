@@ -11,6 +11,7 @@ import api, {
 } from "../api";
 import { PrimaryButton, StatusMessage } from "./ui";
 import SKILLS_BY_DEPARTMENT from "../constants/skillsByDepartment";
+import { YEAR_OPTIONS } from "../constants/departments";
 import { useAuth } from "../context/AuthContext";
 
 const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
@@ -738,10 +739,11 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
                   className="input-modern w-full rounded-lg border border-slate-300 bg-white px-4 py-2"
                 >
                   <option value="">Select Year</option>
-                  <option value="1st Year">1st Year</option>
-                  <option value="2nd Year">2nd Year</option>
-                  <option value="3rd Year">3rd Year</option>
-                  <option value="4th Year">4th Year</option>
+                  {YEAR_OPTIONS.map((year) => (
+                    <option key={year} value={year}>
+                      {year}
+                    </option>
+                  ))}
                 </select>
                 {validationErrors.year && <p className="text-sm text-red-600">{validationErrors.year}</p>}
               </div>

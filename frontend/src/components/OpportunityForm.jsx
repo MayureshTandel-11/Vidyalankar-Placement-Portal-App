@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, Plus, X } from "lucide-react";
 import { PrimaryButton } from "./ui";
-import { DEPARTMENTS, OPPORTUNITY_BROADCAST_ALL } from "../constants/departments";
+import { DEPARTMENTS, OPPORTUNITY_BROADCAST_ALL, YEAR_OPTIONS } from "../constants/departments";
 import SKILLS_BY_DEPARTMENT from "../constants/skillsByDepartment";
 
 const departmentOptions = DEPARTMENTS;
-const yearOptions = ["First Year", "Second Year", "Third Year", "Masters"];
 
 const parseToArray = (value) => {
   if (Array.isArray(value)) return value;
@@ -249,7 +248,7 @@ const OpportunityForm = ({
           {showEligibilityPanel ? (
             <div className="glass-panel absolute z-20 mt-2 w-full p-3 left-0 right-0">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {yearOptions.map((year) => (
+                {YEAR_OPTIONS.map((year) => (
                   <button
                     key={year}
                     type="button"

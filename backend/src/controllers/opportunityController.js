@@ -7,6 +7,7 @@ const { getTodayStart, normalizeDateToStartOfDay, getStatusFromLastDate } = requ
 const { OPPORTUNITY_BROADCAST_ALL, isValidOpportunityDepartment, DEPARTMENTS } = require("../constants/departments");
 const {
   buildDepartmentAudienceMatch,
+  buildYearEligibilityMatch,
   userDepartmentMatchesOpportunity,
   canFacultyCollaborateOnOpportunity,
   canFacultyDeleteOpportunity,
@@ -128,6 +129,11 @@ const listOpportunities = async (req, res) => {
     const filter = {};
     if (req.user.role === "student" || req.user.role === "faculty") {
       Object.assign(filter, buildDepartmentAudienceMatch(req.user.department));
+
+      // Add year-based eligibility filtering for students
+      if (req.user.role === "student" && req.user.year) {
+        Object.assign(filter, buildYearEligibilityMatch(req.user.year));
+      }
     }
 
     const pipeline = [
@@ -206,6 +212,17 @@ const getOpportunityById = async (req, res) => {
           `Expected audience for: [${opportunity.department}], Got user dept: ${userDept}`
         );
         return fail(res, 403, `Forbidden - opportunity not available for your department (${userDept})`);
+      }
+
+      // Check year eligibility for students
+      if (req.user.role === "student" && opportunity.eligibleYears && opportunity.eligibleYears.length > 0) {
+        if (!opportunity.eligibleYears.includes(req.user.year)) {
+          console.warn(
+            `[OPPORTUNITY 403] Student ${req.user.email} denied access due to year mismatch:`,
+            `Required years: [${opportunity.eligibleYears.join(", ")}], Student year: ${req.user.year}`
+          );
+          return fail(res, 403, `Forbidden - opportunity not available for your year (${req.user.year})`);
+        }
       }
     }
 
@@ -431,9 +448,18 @@ const getActiveOpportunities = async (req, res) => {
 
     if (req.user.role === "faculty" || req.user.role === "student") {
       Object.assign(filter, buildDepartmentAudienceMatch(req.user.department));
-      console.log(
-        `[OPPORTUNITY ACTIVE] Fetching active opportunities for ${req.user.role} ${req.user.email} (dept: ${req.user.department})`
-      );
+
+      // Add year-based eligibility filtering for students
+      if (req.user.role === "student" && req.user.year) {
+        Object.assign(filter, buildYearEligibilityMatch(req.user.year));
+        console.log(
+          `[OPPORTUNITY ACTIVE] Fetching active opportunities for student ${req.user.email} (dept: ${req.user.department}, year: ${req.user.year})`
+        );
+      } else {
+        console.log(
+          `[OPPORTUNITY ACTIVE] Fetching active opportunities for ${req.user.role} ${req.user.email} (dept: ${req.user.department})`
+        );
+      }
     } else {
       console.log(`[OPPORTUNITY ACTIVE] Fetching active opportunities for ${req.user.role}: ${req.user.email}`);
     }
@@ -503,9 +529,18 @@ const getArchivedOpportunities = async (req, res) => {
 
     if (req.user.role === "faculty" || req.user.role === "student") {
       Object.assign(filter, buildDepartmentAudienceMatch(req.user.department));
-      console.log(
-        `[OPPORTUNITY ARCHIVED] Fetching archived opportunities for ${req.user.role} ${req.user.email} (dept: ${req.user.department})`
-      );
+
+      // Add year-based eligibility filtering for students
+      if (req.user.role === "student" && req.user.year) {
+        Object.assign(filter, buildYearEligibilityMatch(req.user.year));
+        console.log(
+          `[OPPORTUNITY ARCHIVED] Fetching archived opportunities for student ${req.user.email} (dept: ${req.user.department}, year: ${req.user.year})`
+        );
+      } else {
+        console.log(
+          `[OPPORTUNITY ARCHIVED] Fetching archived opportunities for ${req.user.role} ${req.user.email} (dept: ${req.user.department})`
+        );
+      }
     } else {
       console.log(`[OPPORTUNITY ARCHIVED] Fetching archived opportunities for ${req.user.role}: ${req.user.email}`);
     }
@@ -593,6 +628,8 @@ const applyToOpportunity = async (req, res) => {
       studentEmail: req.user.email,
       studentName,
       studentDepartment: req.user.department || 'Not specified',
+      studentYear: req.user.year || 'Not specified',
+      studentPhone: req.user.phone || 'Not provided',
       appliedAt: new Date()
     };
 
@@ -670,7 +707,9 @@ const getApplicants = async (req, res) => {
         name: app.studentName,
         email: app.studentEmail,
         studentId: app.studentId,
-        department: app.studentDepartment
+        department: app.studentDepartment,
+        year: app.studentYear,
+        phone: app.studentPhone
       }
     }));
 
@@ -881,7 +920,8 @@ const downloadApplicants = async (req, res) => {
         email: app.studentEmail,
         studentId: app.studentId,
         department: app.studentDepartment,
-        year: app.studentYear
+        year: app.studentYear,
+        phone: app.studentPhone
       }
     }));
 

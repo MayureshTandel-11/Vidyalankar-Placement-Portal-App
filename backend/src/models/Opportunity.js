@@ -1,5 +1,5 @@
 const mongoose = require("mongoose");
-const { isValidOpportunityDepartment } = require("../constants/departments");
+const { isValidOpportunityDepartment, YEAR_OPTIONS } = require("../constants/departments");
 const { getStatusFromLastDate } = require("../utils/dateUtils");
 
 // Status logic: Compare lastDate with today's start date
@@ -23,6 +23,11 @@ const opportunitySchema = new mongoose.Schema(
     type: { type: String, enum: ["Internship", "Placement"], required: true },
     description: { type: String, required: true, maxlength: 10000 },
     eligibilityCriteria: { type: String, default: "" },
+    eligibleYears: {
+      type: [String],
+      enum: YEAR_OPTIONS,
+      default: YEAR_OPTIONS,
+    },
     lastDate: { type: Date, required: true },
     status: { type: String, enum: ["active", "archived"], default: "active", index: true },
     department: { type: String, required: true, trim: true },
@@ -35,6 +40,8 @@ const opportunitySchema = new mongoose.Schema(
       studentEmail: { type: String, required: true, trim: true },
       studentName: { type: String, required: true, trim: true },
       studentDepartment: { type: String, required: true, trim: true },
+      studentYear: { type: String, trim: true },
+      studentPhone: { type: String, trim: true },
       appliedAt: { type: Date, default: Date.now }
     }],
     activeStages: {

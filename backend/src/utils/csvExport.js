@@ -185,6 +185,8 @@ const generateApplicantsCSV = (applicants, opportunityName = "Opportunity") => {
     "Email",
     "PRN",
     "Department",
+    "Year",
+    "Phone",
     "Applied On",
   ];
 
@@ -200,6 +202,8 @@ const generateApplicantsCSV = (applicants, opportunityName = "Opportunity") => {
       escapeCSVField(student.email || "N/A"),
       escapeCSVField(student.studentId || "N/A"),
       escapeCSVField(student.department || "N/A"),
+      escapeCSVField(student.year || "N/A"),
+      escapeCSVField(student.phone || "N/A"),
       escapeCSVField(formatDateTime(applicant.appliedAt)),
     ];
 

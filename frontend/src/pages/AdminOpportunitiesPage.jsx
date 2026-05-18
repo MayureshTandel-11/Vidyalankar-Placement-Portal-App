@@ -62,6 +62,10 @@ const AdminOpportunitiesPage = () => {
     }
     setSaving(true);
     try {
+      const eligibleYearsArray = Array.isArray(form.eligibilityCriteria)
+        ? form.eligibilityCriteria.filter(Boolean)
+        : [];
+
       const payload = {
         ...form,
         announcementHeading: form.announcementHeading.trim(),
@@ -71,6 +75,7 @@ const AdminOpportunitiesPage = () => {
         eligibilityCriteria: Array.isArray(form.eligibilityCriteria)
           ? form.eligibilityCriteria.filter(Boolean).join(", ")
           : (form.eligibilityCriteria || "").trim(),
+        eligibleYears: eligibleYearsArray,
       };
       await api.post("/opportunities", payload);
       resetForm();

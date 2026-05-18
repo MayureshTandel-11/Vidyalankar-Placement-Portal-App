@@ -75,7 +75,37 @@ const canViewOpportunityAsAudience = (user, opportunity) => {
   if (!user || !opportunity) return false;
   if (user.role === "admin") return true;
   if (user.role !== "student" && user.role !== "faculty") return false;
-  return userDepartmentMatchesOpportunity(user.department, opportunity.department);
+
+  // Check department match
+  const deptMatch = userDepartmentMatchesOpportunity(user.department, opportunity.department);
+  if (!deptMatch) return false;
+
+  // Check year eligibility for students
+  if (user.role === "student" && opportunity.eligibleYears) {
+    const userYear = user.year;
+    if (!userYear || !opportunity.eligibleYears.includes(userYear)) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
+/**
+ * Build a Mongo $match fragment for year-based filtering
+ * If eligibleYears is set, student must match one of those years
+ */
+const buildYearEligibilityMatch = (userYear) => {
+  if (!userYear) {
+    return { eligibleYears: { $exists: false } };
+  }
+  return {
+    $or: [
+      { eligibleYears: { $exists: false } },
+      { eligibleYears: { $size: 0 } },
+      { eligibleYears: userYear },
+    ],
+  };
 };
 
 module.exports = {
@@ -83,6 +113,7 @@ module.exports = {
   parseOpportunityDepartments,
   userDepartmentMatchesOpportunity,
   buildDepartmentAudienceMatch,
+  buildYearEligibilityMatch,
   isCreator,
   canFacultyCollaborateOnOpportunity,
   canFacultyDeleteOpportunity,

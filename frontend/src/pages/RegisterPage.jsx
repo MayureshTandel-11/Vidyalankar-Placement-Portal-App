@@ -6,7 +6,7 @@ import api, { extractApiData, extractApiError } from "../api";
 import { useAuth } from "../context/AuthContext";
 import { PrimaryButton, StatusMessage } from "../components/ui";
 import PasswordInput from "../components/PasswordInput";
-import { DEPARTMENTS } from "../constants/departments";
+import { DEPARTMENTS, YEAR_OPTIONS } from "../constants/departments";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 
@@ -136,9 +136,11 @@ const RegisterPage = () => {
               <p className="text-xs font-medium uppercase tracking-wide text-slate-600">Year</p>
               <select className="input-modern text-xs xs:text-base" onChange={(e) => setForm({ ...form, year: e.target.value })} defaultValue="">
                 <option value="" disabled>Select Year</option>
-                <option value="1st Year">1st Year</option>
-                <option value="2nd Year">2nd Year</option>
-                <option value="3rd Year">3rd Year</option>
+                {YEAR_OPTIONS.map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
               </select>
             </div>
             <div className="space-y-1.5 xs:space-y-2">

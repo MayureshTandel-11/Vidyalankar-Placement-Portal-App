@@ -653,9 +653,19 @@ const OpportunityCard = ({
                           <div className="flex-1 min-w-0">
                             <p className="font-semibold text-slate-800 text-sm truncate">{applicant.student.name}</p>
                             <p className="text-xs sm:text-sm text-slate-600 truncate">{applicant.student.email}</p>
+                            {applicant.student.phone && (
+                              <p className="text-xs text-slate-600 mt-0.5">
+                                <span className="font-medium">Phone:</span> {applicant.student.phone}
+                              </p>
+                            )}
                             {applicant.student.department && (
                               <p className="text-xs text-slate-500 mt-0.5">
                                 <span className="font-medium">Dept:</span> {applicant.student.department}
+                              </p>
+                            )}
+                            {applicant.student.year && (
+                              <p className="text-xs text-slate-500 mt-0.5">
+                                <span className="font-medium">Year:</span> {applicant.student.year}
                               </p>
                             )}
                           </div>

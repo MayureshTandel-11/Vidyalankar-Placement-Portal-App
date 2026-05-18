@@ -6,9 +6,7 @@ import Layout from "../components/Layout";
 import Footer from "../components/Footer";
 import { Spinner, EmptyState } from "../components/ui";
 import { extractApiError } from "../utils/apiClient";
-import { DEPARTMENTS } from "../constants/departments";
-
-const YEAR_OPTIONS = ["1st Year", "2nd Year", "3rd Year"];
+import { DEPARTMENTS, YEAR_OPTIONS } from "../constants/departments";
 
 /**
  * Analytics for faculty (department-scoped) and admin (filters + class metrics).

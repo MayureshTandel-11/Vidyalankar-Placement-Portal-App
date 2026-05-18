@@ -1,5 +1,5 @@
 const mongoose = require("mongoose");
-const { DEPARTMENTS } = require("../constants/departments");
+const { DEPARTMENTS, YEAR_OPTIONS } = require("../constants/departments");
 
 const userSchema = new mongoose.Schema(
   {
@@ -43,10 +43,10 @@ const userSchema = new mongoose.Schema(
         message: "Phone number must be exactly 10 digits",
       },
     },
-    // Year field for students (1st, 2nd, 3rd, 4th year)
+    // Year field for students (First Year, Second Year, Third Year, Masters)
     year: {
       type: String,
-      enum: ["1st Year", "2nd Year", "3rd Year", "4th Year"],
+      enum: YEAR_OPTIONS,
       required: function () {
         return this.role === "student";
       },
