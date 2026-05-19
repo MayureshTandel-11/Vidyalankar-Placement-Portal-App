@@ -46,8 +46,6 @@ const stageOrder = [
   const [localActiveStages, setLocalActiveStages] = useState(activeStages || []);
   const [newComment, setNewComment] = useState("");
   const [selectedStage, setSelectedStage] = useState("");
-  const [selectedStudentId, setSelectedStudentId] = useState(""); // For single student Result
-  const [selectAllStudents, setSelectAllStudents] = useState(false); // FIX: Toggle for "Select All"
   const [isPosting, setIsPosting] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -71,25 +69,6 @@ const stageOrder = [
   // FIX ISSUE 3: Extract selected students from stageManualSelections for Result stage
   // Get students selected in HR Interview (previous stage to Result)
   const hrSelectedStudents = stageManualSelections?.find((s) => s.stage === "HR Interview")?.selectedStudentIds || [];
-
-  // Helper function to get student details by ID
-  // Maps student IDs (e.g., "B001") to full student information for display
-  const getStudentDetails = (studentId) => {
-    const app = applications.find((a) => String(a.studentId).trim() === String(studentId).trim());
-    if (app && app.student) {
-      return {
-        id: studentId,
-        name: app.student.name || app.student.email || studentId,
-        email: app.student.email,
-      };
-    }
-    // Fallback to just the ID if student info not available
-    return {
-      id: studentId,
-      name: studentId,
-      email: "",
-    };
-  };
 
   useEffect(() => {
     if (activeStages && activeStages.length > 0) {
@@ -116,8 +95,22 @@ const stageOrder = [
     const doFetch = async () => {
       try {
         setIsLoading(true);
+        const fetchStartTime = Date.now();
+
+        console.log("[TIMELINE FETCH] Starting fetch", {
+          opportunityId,
+          userRole,
+          timestamp: new Date().toISOString(),
+        });
+
         const result = await fetchTimeline(opportunityId);
-        console.log('Timeline data received:', result);
+
+        console.log('[TIMELINE FETCH] Data received', {
+          duration: Date.now() - fetchStartTime,
+          timelineCount: Array.isArray(result?.timeline) ? result.timeline.length : 0,
+          activeStagesCount: Array.isArray(result?.activeStages) ? result.activeStages.length : 0,
+        });
+
         const attendance = Array.isArray(result?.studentAttendance)
           ? result.studentAttendance
           : [];
@@ -131,6 +124,12 @@ const stageOrder = [
           )
         );
         const stages = Array.isArray(result?.activeStages) ? result.activeStages : [];
+
+        console.log('[TIMELINE FETCH] After filtering/deduping', {
+          finalCount: timeline.length,
+          stagesCount: stages.length,
+        });
+
         setTimelineEntries(timeline);
         setLocalActiveStages(stages);
         if (isStudent) {
@@ -188,7 +187,15 @@ useEffect(() => {
   const handleTimelineEntry = ({ entry, activeStages: newActiveStages }) => {
     if (!entry) return;
 
+    console.log("[TIMELINE SOCKET RECEIVED] New entry event received", {
+      entryId: entry._id,
+      stage: entry.stage,
+      studentId: entry.studentId || null,
+      timestamp: new Date().toISOString(),
+    });
+
     if (isFacultyOrAdmin && isRoundSelectionComment(entry.comment)) {
+      console.log("[TIMELINE SOCKET] Filtering out round selection comment for faculty/admin");
       return;
     }
 
@@ -201,11 +208,29 @@ useEffect(() => {
           studentAttendance
         )
       ) {
+        console.log("[TIMELINE SOCKET] Filtering entry - not visible to this student");
         return;
       }
     }
 
     setTimelineEntries((prev) => {
+      // Check if entry already exists to prevent duplicates
+      const alreadyExists = prev.some(e => e._id === entry._id);
+      if (alreadyExists) {
+        console.warn("[TIMELINE SOCKET DUPLICATE] Entry already in state, skipping", {
+          entryId: entry._id,
+          stage: entry.stage,
+        });
+        return prev;
+      }
+
+      console.log("[TIMELINE SOCKET] Adding entry to state", {
+        entryId: entry._id,
+        stage: entry.stage,
+        previousCount: prev.length,
+        newCount: prev.length + 1,
+      });
+
       const merged = dedupeTimelineEntries(
         filterTimelineForRole(
           [...prev, entry],
@@ -215,6 +240,12 @@ useEffect(() => {
           studentAttendance
         )
       );
+
+      console.log("[TIMELINE SOCKET] Dedupe complete", {
+        entryId: entry._id,
+        finalCount: merged.length,
+      });
+
       return merged;
     });
 
@@ -252,45 +283,54 @@ useEffect(() => {
 ]);
 
   const handlePostUpdate = async () => {
+    // FIX: Add submission guard to prevent double-submit
+    if (isPosting) {
+      console.warn("[TIMELINE] Submission already in progress, ignoring duplicate submit");
+      return;
+    }
+
     if (!newComment.trim() || !selectedStage) {
       setError("Please fill in all required fields");
       return;
     }
 
-    // FIX: Validate studentId/studentIds for Result stage
-    if (selectedStage === "Result") {
-      if (!selectAllStudents && !selectedStudentId) {
-        setError("Please select a student or choose 'Select All Students' for the Result stage comment");
-        return;
-      }
-    }
-
     setIsPosting(true);
     setError("");
 
+    const submitStartTime = Date.now();
+
     try {
-      // FIX: Include studentId or studentIds in POST body for Result stage
+      // Build post body with stage and comment
       const postBody = {
         stage: selectedStage,
         comment: newComment,
         activateStage: activateStage && selectedStage !== "Result",
       };
 
-      // Add studentId/studentIds for Result stage comments
-      if (selectedStage === "Result") {
-        if (selectAllStudents) {
-          // FIX: Send all HR-selected students
-          postBody.studentIds = hrSelectedStudents;
-        } else {
-          // Single student
-          postBody.studentId = selectedStudentId;
-        }
+      // For Result stage, automatically apply to all HR-selected students
+      if (selectedStage === "Result" && hrSelectedStudents.length > 0) {
+        postBody.studentIds = hrSelectedStudents;
       }
+
+      console.log("[TIMELINE POST] Submitting timeline entry", {
+        stage: selectedStage,
+        opportunityId,
+        studentIds: postBody.studentIds || [],
+        timestamp: new Date().toISOString(),
+      });
 
       const response = await api.post(`/timeline/${opportunityId}`, postBody);
 
-      // If stage was activated, update local active stages
-      if (activateStage && selectedStage !== "Result") {
+      console.log("[TIMELINE POST] Success - entries created", {
+        entryCount: Array.isArray(response.data?.data) ? response.data.data.length : 1,
+        duration: Date.now() - submitStartTime,
+        message: response.data?.message,
+      });
+
+      // Update active stages for visual feedback
+      // For Result stage, always add it when posting (even without activateStage flag)
+      // For other stages, only add if activateStage is true
+      if (selectedStage === "Result" || activateStage) {
         setLocalActiveStages((prev) => {
           const updated = Array.isArray(prev) ? [...prev] : [];
           if (!updated.includes(selectedStage)) {
@@ -300,19 +340,23 @@ useEffect(() => {
         });
       }
 
-      // Socket.IO is the single source of truth for timeline updates
-      // Invalidate cache so next fetch gets fresh data
-      invalidateTimelineCache(opportunityId);
+      // FIX: DO NOT refetch here - Socket.IO is the single source of truth
+      // The socket listener will automatically update the timeline with new entries
+      // Calling fetchTimeline here causes duplicate entries to be added
+      console.log("[TIMELINE POST] Waiting for socket events to update timeline (no manual refetch)");
 
       setNewComment("");
       setSelectedStage("");
-      setSelectedStudentId("");
-      setSelectAllStudents(false); // FIX: Reset Select All toggle
       setActivateStage(false);
     } catch (err) {
       const errorMessage = err.response?.data?.message || err.message || "Failed to post update";
       setError(errorMessage);
-      console.error("[POST TIMELINE ERROR]", err);
+      console.error("[POST TIMELINE ERROR]", {
+        error: err.message,
+        status: err.response?.status,
+        code: err.response?.data?.code,
+        duration: Date.now() - submitStartTime,
+      });
     } finally {
       setIsPosting(false);
     }
@@ -336,12 +380,8 @@ useEffect(() => {
    */
   const hasResultStageComment = () => {
     if (!Array.isArray(timelineEntries)) return false;
-    // return timelineEntries.some((entry) => entry.stage === "Result");
-    return timelineEntries.some(
-  (entry) =>
-    entry.stage === "Result" &&
-    entry.studentId === selectedStudentId
-);
+    // Check if ANY Result stage entry exists for this opportunity
+    return timelineEntries.some((entry) => entry.stage === "Result");
   };
 
   const resultStageCommentExists = hasResultStageComment();
@@ -417,68 +457,7 @@ useEffect(() => {
               </select>
             </div>
 
-            {/* FIX: Add student selector for Result stage with "Select All Students" option */}
-            {selectedStage === "Result" && (
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-xs font-medium text-[#B70D23] mb-1.5">
-                    Select Students for Final Result
-                  </label>
 
-                  {/* FIX: "Select All Students" toggle */}
-                  {hrSelectedStudents.length > 0 && (
-                    <div className="mb-3 flex items-center gap-2 rounded-lg bg-indigo-50 p-3 border border-indigo-200">
-                      <input
-                        type="checkbox"
-                        id="selectAllStudents"
-                        checked={selectAllStudents}
-                        onChange={(e) => {
-                          setSelectAllStudents(e.target.checked);
-                          if (e.target.checked) {
-                            setSelectedStudentId(""); // Clear single selection
-                          }
-                        }}
-                        className="rounded border-indigo-600 text-indigo-600 focus:ring-indigo-600"
-                      />
-                      <label htmlFor="selectAllStudents" className="text-xs font-medium text-indigo-700 cursor-pointer">
-                        Apply result comment to all {hrSelectedStudents.length} HR-selected students
-                      </label>
-                    </div>
-                  )}
-
-                  {/* Student selector - disabled when "Select All" is checked */}
-                  <select
-                    value={selectedStudentId}
-                    onChange={(e) => {
-                      setSelectedStudentId(e.target.value);
-                      setSelectAllStudents(false); // Disable Select All when individual is chosen
-                    }}
-                    disabled={selectAllStudents}
-                    className="w-full rounded-lg border border-[#B70D23] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#B70D23] disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
-                  >
-                    <option value="">{selectAllStudents ? "Applying to all students" : "Choose a student..."}</option>
-                    {hrSelectedStudents.length > 0 ? (
-                      hrSelectedStudents.map((studentId) => {
-                        const studentDetails = getStudentDetails(studentId);
-                        return (
-                          <option key={studentId} value={studentId}>
-                            {studentDetails.name} ({studentDetails.id})
-                          </option>
-                        );
-                      })
-                    ) : (
-                      <option disabled>No students selected for HR Interview</option>
-                    )}
-                  </select>
-                </div>
-
-                {hrSelectedStudents.length === 0 && (
-                  <p className="text-xs text-amber-600">
-                    ⚠️ No students have been selected for HR Interview. Select students in HR Interview stage first.
-                  </p>
-                )}
-              </div>
-            )}
 
             <div>
               <label className="block text-xs font-medium text-[#B70D23] mb-1.5">

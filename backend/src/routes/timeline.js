@@ -198,6 +198,17 @@ router.post("/:opportunityId", protect, allowRoles("faculty", "admin"), async (r
 
       // Batch insert all timeline entries for Result stage
       if (studentIds && Array.isArray(studentIds) && studentIds.length > 0) {
+        const insertStartTime = Date.now();
+
+        console.log("[TIMELINE BATCH INSERT] Starting batch insert", {
+          opportunityId,
+          stage,
+          studentCount: studentIdsToProcess.length,
+          studentIds: studentIdsToProcess,
+          postedBy: req.user._id,
+          timestamp: new Date().toISOString(),
+        });
+
         const timelineEntries = studentIdsToProcess.map(sid => ({
           opportunityId: opportunity._id,
           studentId: sid,
@@ -209,29 +220,76 @@ router.post("/:opportunityId", protect, allowRoles("faculty", "admin"), async (r
           type: "GENERAL",  // Result stage comments are general, not selection messages
         }));
 
-        await OpportunityTimeline.insertMany(timelineEntries);
+        const insertedEntries = await OpportunityTimeline.insertMany(timelineEntries);
+        const insertedIds = insertedEntries.map(entry => entry._id);
 
-        // Fetch and emit all created entries
+        console.log("[TIMELINE BATCH INSERT] Entries inserted successfully", {
+          opportunityId,
+          stage,
+          insertCount: insertedEntries.length,
+          insertedIds: insertedIds,
+          insertDuration: Date.now() - insertStartTime,
+        });
+
+        // CRITICAL FIX: Add Result stage to activeStages if not already there
+        // This ensures the Result stage appears in the selection process bar
+        if (!opportunity.activeStages.includes("Result")) {
+          await Opportunity.findByIdAndUpdate(opportunityId, { $addToSet: { activeStages: "Result" } });
+        }
+
+        // FIX: Fetch ONLY the newly created entries by their IDs (not by comment text which could include old entries)
         const createdEntries = await OpportunityTimeline.find({
-          opportunityId: opportunity._id,
-          studentId: { $in: studentIdsToProcess },
-          stage: "Result",
-          comment: comment.trim(),
+          _id: { $in: insertedIds },
         }).populate("postedBy", "name role").lean();
 
-        // Get updated activeStages
+        console.log("[TIMELINE BATCH FETCH] Fetched newly created entries", {
+          opportunityId,
+          stage,
+          fetchedCount: createdEntries.length,
+          fetchedIds: createdEntries.map(e => e._id),
+        });
+
+        // Get updated activeStages (now includes Result stage)
         const updatedOpportunity = await Opportunity.findById(opportunityId);
 
         // Emit Socket.IO events for each created entry
         const io = getIO();
         if (io && createdEntries.length > 0) {
+          console.log("[TIMELINE SOCKET EMIT] Emitting socket events", {
+            opportunityId,
+            stage,
+            entriesCount: createdEntries.length,
+            room: `opportunity_${opportunityId}`,
+          });
+
           for (const entry of createdEntries) {
+            console.log(`[TIMELINE SOCKET EMIT] Emitting event for entry ${entry._id}`, {
+              studentId: entry.studentId,
+              stage: entry.stage,
+            });
+
             io.to(`opportunity_${opportunityId}`).emit("timeline:new_entry", {
               entry,
               activeStages: updatedOpportunity.activeStages,
             });
+
+            // Also emit analytics update event for the specific student
+            // This allows StudentAnalytics component to refetch for this student
+            io.emit("analytics:update", {
+              studentId: entry.studentId,
+              opportunityId: opportunityId,
+              stage: stage,
+              reason: "Timeline entry posted"
+            });
           }
         }
+
+        console.log("[TIMELINE BATCH COMPLETE] Response sent", {
+          opportunityId,
+          stage,
+          entriesCount: createdEntries.length,
+          totalDuration: Date.now() - insertStartTime,
+        });
 
         return res.status(201).json({
           data: createdEntries,
@@ -251,8 +309,16 @@ router.post("/:opportunityId", protect, allowRoles("faculty", "admin"), async (r
     }
 
     const entryType = "GENERAL";
+    const singleSubmitStartTime = Date.now();
 
+    // FIX: For single-student Result submissions, check for duplicate BEFORE creating
     if (studentId && stage === "Result") {
+      console.log("[TIMELINE SINGLE STUDENT RESULT] Checking for existing Result entry", {
+        opportunityId,
+        studentId: String(studentId).trim(),
+        stage,
+      });
+
       const existingTimeline = await OpportunityTimeline.findOne({
         opportunityId: opportunity._id,
         studentId: String(studentId).trim(),
@@ -261,12 +327,25 @@ router.post("/:opportunityId", protect, allowRoles("faculty", "admin"), async (r
       });
 
       if (existingTimeline) {
+        console.log("[TIMELINE SINGLE STUDENT RESULT] Duplicate prevented - entry already exists", {
+          opportunityId,
+          studentId: String(studentId).trim(),
+          stage,
+          existingEntryId: existingTimeline._id,
+        });
         return res.status(200).json({
           data: existingTimeline,
-          message: "Duplicate timeline prevented",
+          message: "Duplicate timeline prevented - entry already exists",
         });
       }
+
+      console.log("[TIMELINE SINGLE STUDENT RESULT] No duplicate found, proceeding with creation", {
+        opportunityId,
+        studentId: String(studentId).trim(),
+        stage,
+      });
     }
+
     // Create timeline entry
     const timelineEntry = new OpportunityTimeline({
       opportunityId: opportunity._id,
@@ -280,16 +359,31 @@ router.post("/:opportunityId", protect, allowRoles("faculty", "admin"), async (r
     });
 
     try {
+      console.log("[TIMELINE SAVE] Saving timeline entry", {
+        opportunityId,
+        stage,
+        studentId: studentId ? String(studentId).trim() : null,
+        timestamp: new Date().toISOString(),
+      });
+
       await timelineEntry.save();
+
+      console.log("[TIMELINE SAVE] Entry saved successfully", {
+        entryId: timelineEntry._id,
+        opportunityId,
+        stage,
+        studentId: studentId ? String(studentId).trim() : null,
+      });
     } catch (saveErr) {
       // Handle duplicate key error (E11000) - entry already created by concurrent request
       if (saveErr.code === 11000) {
-        console.log("[TIMELINE DUPLICATE KEY] Concurrent duplicate prevented", {
+        console.warn("[TIMELINE DUPLICATE KEY] Concurrent duplicate prevented", {
           opportunityId,
-          studentId,
+          studentId: studentId ? String(studentId).trim() : null,
           stage,
           type: entryType,
           errorCode: saveErr.code,
+          errorMessage: saveErr.message,
         });
 
         // Fetch and return the existing entry instead
@@ -301,7 +395,11 @@ router.post("/:opportunityId", protect, allowRoles("faculty", "admin"), async (r
         }).populate("postedBy", "name role");
 
         if (existingEntry) {
-          console.log("[TIMELINE DUPLICATE] Returning existing entry instead of throwing error");
+          console.log("[TIMELINE DUPLICATE] Returning existing entry instead of throwing error", {
+            existingEntryId: existingEntry._id,
+            opportunityId,
+            stage,
+          });
           // Emit the existing entry via Socket.IO and return
           const io = getIO();
           if (io) {
@@ -390,27 +488,66 @@ router.post("/:opportunityId", protect, allowRoles("faculty", "admin"), async (r
       }
     }
 
+    // CRITICAL FIX: Ensure Result stage is added to activeStages
+    // Result stage should always be active when a result comment is posted
+    if (stage === "Result" && !opportunity.activeStages?.includes("Result")) {
+      console.log("[TIMELINE RESULT] Adding Result to activeStages", { opportunityId });
+      await Opportunity.findByIdAndUpdate(opportunityId, { $addToSet: { activeStages: "Result" } });
+    }
+
     // Refetch the entry with proper population for socket emit
     const populatedEntry = await OpportunityTimeline.findById(timelineEntry._id)
       .populate("postedBy", "name role")
       .lean();
 
-    // Get updated activeStages
+    console.log("[TIMELINE ENTRY FETCHED] Entry populated for emission", {
+      entryId: populatedEntry._id,
+      opportunityId,
+      stage: populatedEntry.stage,
+      studentId: populatedEntry.studentId || null,
+    });
+
+    // Get updated activeStages (now includes Result stage if it was just added)
     const updatedOpportunity = await Opportunity.findById(opportunityId);
 
     // Emit Socket.IO event with properly populated entry
     const io = getIO();
     if (io) {
-      console.log('[TIMELINE SOCKET] Emitting entry:', {
-        _id: populatedEntry._id,
-        postedBy: populatedEntry.postedBy,
-        stage: populatedEntry.stage
+      console.log('[TIMELINE SOCKET] Emitting timeline:new_entry event', {
+        entryId: populatedEntry._id,
+        room: `opportunity_${opportunityId}`,
+        stage: populatedEntry.stage,
+        studentId: populatedEntry.studentId || null,
       });
+
       io.to(`opportunity_${opportunityId}`).emit("timeline:new_entry", {
         entry: populatedEntry,
         activeStages: updatedOpportunity.activeStages,
       });
+
+      // Also emit analytics update event if this entry is for a specific student
+      if (populatedEntry.studentId) {
+        console.log('[TIMELINE SOCKET] Emitting analytics:update event', {
+          studentId: populatedEntry.studentId,
+          opportunityId,
+          stage: populatedEntry.stage,
+        });
+
+        io.emit("analytics:update", {
+          studentId: populatedEntry.studentId,
+          opportunityId: opportunityId,
+          stage: populatedEntry.stage,
+          reason: "Timeline entry posted"
+        });
+      }
     }
+
+    console.log("[TIMELINE RESPONSE] Success response sent", {
+      entryId: populatedEntry._id,
+      opportunityId,
+      stage: populatedEntry.stage,
+      duration: Date.now() - singleSubmitStartTime,
+    });
 
     return res.status(201).json({ data: populatedEntry, message: "Timeline entry created" });
   } catch (error) {

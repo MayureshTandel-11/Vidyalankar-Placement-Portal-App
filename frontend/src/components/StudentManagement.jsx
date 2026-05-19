@@ -4,6 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { Search, Filter, Download, BarChart3, Image as ImageIcon, FileText } from "lucide-react";
 import { Spinner } from "./ui";
 import { generateStudentProfilePDF } from "../utils/pdfGenerator";
+import StudentAnalytics from "./StudentAnalytics";
 
 /**
  * StudentManagement Component
@@ -29,6 +30,12 @@ const StudentManagement = () => {
   const [downloadingPhotoStudentId, setDownloadingPhotoStudentId] = useState(null);
 
   const ITEMS_PER_PAGE = 20;
+
+  // Helper function to display year in readable format
+  const getYearDisplay = (yearValue) => {
+    // Year values from backend already in proper format: "First Year", "Second Year", etc.
+    return yearValue;
+  };
 
   // Fetch years and departments on mount
   useEffect(() => {
@@ -350,43 +357,10 @@ const StudentManagement = () => {
       return;
     }
 
-    setIsLoading(true);
-    setError("");
-
-    try {
-      if (process.env.NODE_ENV === "development") {
-        console.log("[STUDENT MGMT] Fetching analytics for:", studentId);
-      }
-
-      const response = await api.get(`/student/analytics/${studentId}`);
-
-      // Defensive: validate response
-      const analyticsData = response?.data?.data;
-      if (!analyticsData) {
-        console.warn("[STUDENT MGMT] Empty analytics response for:", studentId);
-        setError("No analytics data available for this student.");
-        return;
-      }
-
-      setSelectedStudent({
-        ...student,
-        analytics: analyticsData,
-      });
-      setShowAnalyticsModal(true);
-    } catch (err) {
-      const message = err.response?.data?.message ||
-                     err.message ||
-                     "Failed to fetch student analytics";
-      setError(message);
-      console.error("[STUDENT MGMT] Analytics fetch error:", {
-        studentId,
-        message,
-        status: err.response?.status,
-        url: err.config?.url
-      });
-    } finally {
-      setIsLoading(false);
-    }
+    // Set selected student and open modal
+    // StudentAnalytics component will handle fetching the analytics data
+    setSelectedStudent(student);
+    setShowAnalyticsModal(true);
   };
 
   // Pagination helpers
@@ -474,7 +448,7 @@ const StudentManagement = () => {
               <option value="">All Years</option>
               {years.map((yr) => (
                 <option key={yr} value={yr}>
-                  {yr}
+                  {getYearDisplay(yr)}
                 </option>
               ))}
             </select>
@@ -605,9 +579,9 @@ const StudentManagement = () => {
       )}
 
       {/* Student Analytics Modal */}
-      {showAnalyticsModal && selectedStudent && selectedStudent.analytics && (
+      {showAnalyticsModal && selectedStudent && (
         <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[85vh] overflow-y-auto border border-slate-200">
+          <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto border border-slate-200">
             {/* Header */}
             <div className="sticky top-0 bg-gradient-to-r from-slate-50 to-white border-b border-slate-200 px-6 py-5">
               <div className="flex items-center justify-between">
@@ -628,116 +602,9 @@ const StudentManagement = () => {
               </div>
             </div>
 
-            <div className="p-6 space-y-6">
-              {/* Student Info */}
-              <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-                <h4 className="text-sm font-semibold text-slate-900 mb-3 flex items-center gap-2">
-                  <span className="w-1 h-1 bg-slate-900 rounded-full"></span>
-                  Student Information
-                </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 text-sm">
-                  <div>
-                    <p className="text-xs font-medium text-slate-600 uppercase tracking-wide">Email</p>
-                    <p className="text-slate-900 font-medium mt-1 break-words">{selectedStudent.email}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium text-slate-600 uppercase tracking-wide">PRN</p>
-                    <p className="text-slate-900 font-medium mt-1">{selectedStudent.studentId}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium text-slate-600 uppercase tracking-wide">Department</p>
-                    <p className="text-slate-900 font-medium mt-1">{selectedStudent.department}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium text-slate-600 uppercase tracking-wide">Year</p>
-                    <p className="text-slate-900 font-medium mt-1">{selectedStudent.year || "N/A"}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Statistics Cards */}
-              <div>
-                <h4 className="text-sm font-semibold text-slate-900 mb-3 flex items-center gap-2">
-                  <span className="w-1 h-1 bg-slate-900 rounded-full"></span>
-                  Placement Statistics
-                </h4>
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200 hover:shadow-md transition">
-                    <p className="text-xs text-blue-700 font-semibold uppercase tracking-wide mb-2">Total Applied</p>
-                    <p className="text-3xl font-bold text-blue-900">
-                      {selectedStudent.analytics?.statistics?.totalApplied || 0}
-                    </p>
-                  </div>
-                  <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-4 border border-green-200 hover:shadow-md transition">
-                    <p className="text-xs text-green-700 font-semibold uppercase tracking-wide mb-2">Cleared Aptitude</p>
-                    <p className="text-3xl font-bold text-green-900">
-                      {selectedStudent.analytics?.statistics?.totalClearedAptitude || 0}
-                    </p>
-                  </div>
-                  <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-lg p-4 border border-red-200 hover:shadow-md transition">
-                    <p className="text-xs text-red-700 font-semibold uppercase tracking-wide mb-2">Rejected</p>
-                    <p className="text-3xl font-bold text-red-900">
-                      {selectedStudent.analytics?.statistics?.totalRejected || 0}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Stage Breakdown */}
-              <div>
-                <h4 className="text-sm font-semibold text-slate-900 mb-3 flex items-center gap-2">
-                  <span className="w-1 h-1 bg-slate-900 rounded-full"></span>
-                  Stage-wise Progress
-                </h4>
-                <div className="grid grid-cols-5 gap-3">
-                  <div className="text-center p-3 bg-gradient-to-b from-indigo-50 to-white rounded-lg border border-indigo-200">
-                    <p className="text-xs text-slate-600 font-medium mb-2">Aptitude</p>
-                    <p className="text-2xl font-bold text-indigo-600">{selectedStudent.analytics?.statistics?.totalClearedAptitude || 0}</p>
-                  </div>
-                  <div className="text-center p-3 bg-gradient-to-b from-purple-50 to-white rounded-lg border border-purple-200">
-                    <p className="text-xs text-slate-600 font-medium mb-2">GD</p>
-                    <p className="text-2xl font-bold text-purple-600">{selectedStudent.analytics?.statistics?.totalClearedGD || 0}</p>
-                  </div>
-                  <div className="text-center p-3 bg-gradient-to-b from-cyan-50 to-white rounded-lg border border-cyan-200">
-                    <p className="text-xs text-slate-600 font-medium mb-2">Technical</p>
-                    <p className="text-2xl font-bold text-cyan-600">{selectedStudent.analytics?.statistics?.totalClearedTechnical || 0}</p>
-                  </div>
-                  <div className="text-center p-3 bg-gradient-to-b from-amber-50 to-white rounded-lg border border-amber-200">
-                    <p className="text-xs text-slate-600 font-medium mb-2">HR</p>
-                    <p className="text-2xl font-bold text-amber-600">{selectedStudent.analytics?.statistics?.totalClearedHR || 0}</p>
-                  </div>
-                  <div className="text-center p-3 bg-gradient-to-b from-rose-50 to-white rounded-lg border border-rose-200">
-                    <p className="text-xs text-slate-600 font-medium mb-2">Placement</p>
-                    <p className="text-2xl font-bold text-rose-600">{selectedStudent.analytics?.statistics?.totalPlaced || 0}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Applied Opportunities */}
-              {selectedStudent.analytics?.opportunities?.length > 0 && (
-                <div>
-                  <h4 className="text-sm font-semibold text-slate-900 mb-3 flex items-center gap-2">
-                    <span className="w-1 h-1 bg-slate-900 rounded-full"></span>
-                    Applied Opportunities <span className="ml-auto text-xs font-normal bg-slate-200 text-slate-700 px-2 py-1 rounded-full">{selectedStudent.analytics.opportunities.length}</span>
-                  </h4>
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {selectedStudent.analytics.opportunities.map((opp, idx) => (
-                      <div key={opp.opportunityId} className="text-sm p-3 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 transition">
-                        <div className="flex items-start gap-3">
-                          <span className="text-xs font-bold text-slate-400 pt-0.5 w-6 text-center">{idx + 1}</span>
-                          <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-slate-900">{opp.title}</p>
-                            <p className="text-xs text-slate-600 mt-1">{opp.type} • {opp.status}</p>
-                            <p className="text-xs text-slate-500 mt-2">
-                              <span className="text-slate-700 font-medium">Highest Stage:</span> {opp.highestStageCleared}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+            <div className="p-6">
+              {/* StudentAnalytics Component - handles real-time updates via socket */}
+              <StudentAnalytics studentId={selectedStudent.studentId} />
             </div>
 
             {/* Footer */}

@@ -163,9 +163,9 @@ const searchStudents = async (req, res) => {
  */
 const getYearOptions = async (req, res) => {
   try {
-    const years = ["1st Year", "2nd Year", "3rd Year", "4th Year"];
+    const { YEAR_OPTIONS } = require("../constants/departments");
     return res.status(200).json({
-      data: years,
+      data: YEAR_OPTIONS,
       message: "Years fetched successfully",
     });
   } catch (error) {

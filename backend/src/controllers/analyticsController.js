@@ -41,7 +41,7 @@ const getStudentAnalytics = async (req, res) => {
     const appliedOpportunities = await Opportunity.find({
       "applications.studentId": studentId,
     })
-      .select("_id announcementHeading type department lastDate status")
+      .select("_id announcementHeading type department lastDate status stageManualSelections")
       .lean();
 
     // For each opportunity, get the student's progress through stages

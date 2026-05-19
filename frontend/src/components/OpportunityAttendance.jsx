@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { Spinner, StatusMessage } from "./ui";
 import SearchableStudentSelect from "./SearchableStudentSelect";
+import ResultSectionOfferLetters from "./ResultSectionOfferLetters";
 
 const RECRUITMENT_STAGES = [
   "Aptitude Test",
@@ -646,18 +647,20 @@ const OpportunityAttendance = ({ opportunityId, activeStages, onAttendanceUpdate
           <p className="text-sm text-slate-600">Select a stage above to view attendance.</p>
         </div>
       ) : isResultStage(selectedStage) ? (
-        // Result stage - no attendance tracking
-        <div className="rounded-lg border border-blue-200 bg-blue-50 p-8 text-center">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-blue-300 mb-3">
-            <CheckCircle size={24} className="text-blue-700" />
+        // Result stage - show offer letter management
+        <div className="space-y-6">
+          <div className="rounded-lg border border-blue-200 bg-blue-50 p-6">
+            <div className="flex items-start gap-3">
+              <CheckCircle size={20} className="text-blue-700 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-blue-800">Result Stage - Offer Letter Management</p>
+                <p className="text-xs text-blue-700 mt-1">
+                  Upload offer letters for selected students. Each offer letter is only accessible to the respective student.
+                </p>
+              </div>
+            </div>
           </div>
-          <p className="text-base font-medium text-blue-800 mb-2">Final Result Stage</p>
-          <p className="text-sm text-blue-700 mb-2">
-            This stage does not use attendance tracking. Faculty/Admin can directly declare the final result.
-          </p>
-          <p className="text-xs text-blue-600 mt-3 px-4">
-            <strong>Allowed actions:</strong> Mark students as Selected or Rejected. No manual selection or promotion to next round.
-          </p>
+          <ResultSectionOfferLetters opportunityId={opportunityId} />
         </div>
       ) : isGeneralUpdate ? (
         // General Update stage - no attendance tracking

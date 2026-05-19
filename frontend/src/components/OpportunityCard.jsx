@@ -13,7 +13,9 @@ import { getSocket } from "../utils/socket";
 import { facultyCanCollaborateOnOpportunity, facultyCanDeleteOpportunity } from "../utils/opportunityDepartment";
 import OpportunityTimeline from "./OpportunityTimeline";
 import OpportunityAttendance from "./OpportunityAttendance";
+import ResultSection from "./ResultSection";
 import { getApplicantsCount, getApplicants } from "../services/opportunitiesService";
+import OfferLetterCard from "./OfferLetterCard";
 
 const toLabel = (value) => {
   if (!value) return "Not specified";
@@ -228,6 +230,7 @@ const OpportunityCard = ({
     const tabs = ["details", "status-timeline"];
     if (user?.role === "faculty" || user?.role === "admin") {
       tabs.push("attendance");
+      tabs.push("result");
     }
     if (shouldShowApplicants) {
       tabs.push("applicants");
@@ -377,6 +380,7 @@ const OpportunityCard = ({
                 "details": "Details",
                 "status-timeline": "Timeline",
                 "attendance": "Attendance",
+                "result": "Result",
                 "applicants": "Applicants",
               }[tab];
 
@@ -535,6 +539,12 @@ const OpportunityCard = ({
                 </div>
               </div>
 
+              {/* Offer Letter Container Card */}
+              <OfferLetterCard
+                opportunityId={opportunity._id}
+                opportunityTitle={opportunity.announcementHeading}
+              />
+
               {error && (
                 <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs sm:text-sm text-red-800">
                   <AlertTriangle size={16} className="flex-shrink-0" />
@@ -597,6 +607,13 @@ const OpportunityCard = ({
               opportunityId={opportunity._id}
               activeStages={activeStages}
               onAttendanceUpdate={refreshActiveStages}
+            />
+          )}
+
+          {/* Result Tab */}
+          {activeTab === "result" && (
+            <ResultSection
+              opportunityId={opportunity._id}
             />
           )}
 

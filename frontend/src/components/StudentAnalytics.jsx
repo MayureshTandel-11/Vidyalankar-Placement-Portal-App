@@ -4,12 +4,15 @@ import { extractApiError } from "../utils/apiClient";
 import { useAuth } from "../context/AuthContext";
 import { TrendingUp, Target, CheckCircle, AlertCircle } from "lucide-react";
 import { Spinner } from "./ui";
+import { getSocket } from "../utils/socket";
 
 /**
  * StudentAnalytics Component
  * Shows student's placement progress and analytics
  * Faculty can view analytics for students in their department
  * Admin can view analytics for all students
+ *
+ * DYNAMIC UPDATES: Listens to socket events for real-time analytics refresh
  */
 const StudentAnalytics = ({ studentId }) => {
   const { user } = useAuth();
@@ -19,7 +22,9 @@ const StudentAnalytics = ({ studentId }) => {
   const [selectedOpportunity, setSelectedOpportunity] = useState(null);
   const [opportunityDetails, setOpportunityDetails] = useState(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const socket = getSocket();
 
+  // Initial fetch when studentId changes
   useEffect(() => {
     // Guard: only fetch if studentId is valid
     if (!studentId || studentId === "null" || studentId === "undefined") {
@@ -31,6 +36,45 @@ const StudentAnalytics = ({ studentId }) => {
 
     fetchAnalytics();
   }, [studentId]);
+
+  // Socket listener for real-time analytics updates
+  // Refetch analytics when timeline entries are posted (selections, results, etc.)
+  useEffect(() => {
+    if (!socket || !studentId || studentId === "null" || studentId === "undefined") {
+      return;
+    }
+
+    const handleTimelineUpdate = ({ entry, activeStages, opportunityId }) => {
+      // Refetch analytics when timeline entry is posted
+      // This ensures analytics always reflects latest student progress
+      console.log("[ANALYTICS SOCKET] Timeline update received, refetching analytics", {
+        stage: entry?.stage,
+        studentId,
+        opportunityId
+      });
+      fetchAnalytics();
+    };
+
+    const handleAnalyticsUpdate = ({ studentId: updatedStudentId, opportunityId, stage, reason }) => {
+      // Specific analytics update event - refetch if this update is for our student
+      if (updatedStudentId === studentId) {
+        console.log("[ANALYTICS SOCKET] Analytics update received for student, refetching", {
+          studentId,
+          stage,
+          reason
+        });
+        fetchAnalytics();
+      }
+    };
+
+    socket.on("timeline:new_entry", handleTimelineUpdate);
+    socket.on("analytics:update", handleAnalyticsUpdate);
+
+    return () => {
+      socket.off("timeline:new_entry", handleTimelineUpdate);
+      socket.off("analytics:update", handleAnalyticsUpdate);
+    };
+  }, [socket, studentId]);
 
   const fetchAnalytics = async () => {
     // Guard: validate studentId before API call
