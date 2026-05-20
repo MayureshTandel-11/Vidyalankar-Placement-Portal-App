@@ -13,6 +13,7 @@ import AdminOpportunitiesPage from "./pages/AdminOpportunitiesPage";
 import MyPostsPage from "./pages/MyPostsPage";
 import StudentDeletionRequestPage from "./pages/StudentDeletionRequestPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
+import PromotionsPage from "./pages/PromotionsPage";
 import { useAuth } from "./context/AuthContext";
 import Layout from "./components/Layout";
 import Footer from "./components/Footer";
@@ -57,6 +58,7 @@ const App = () => {
       <Route path="/my-posts" element={<ProtectedRoute allowRoles={["faculty"]}><MyPostsPage /></ProtectedRoute>} />
       <Route path="/manage-faculty" element={<ProtectedRoute allowRoles={["admin"]}><ManageFacultyPage /></ProtectedRoute>} />
       <Route path="/students" element={<ProtectedRoute allowRoles={["faculty", "admin"]}><Layout role={user?.role?.charAt(0).toUpperCase() + user?.role?.slice(1)}><StudentManagement /></Layout></ProtectedRoute>} />
+      <Route path="/promotions" element={<ProtectedRoute allowRoles={["faculty", "admin"]}><PromotionsPage /></ProtectedRoute>} />
       {/* FIX: Use dedicated AnalyticsPage instead of broken inline StudentAnalytics with null studentId */}
       <Route path="/analytics" element={<ProtectedRoute allowRoles={["faculty", "admin"]}><AnalyticsPage /></ProtectedRoute>} />
       {/* <Route path="/notifications" element={<ProtectedRoute allowRoles={["student"]}><Layout role="Student"><Notifications onUnreadCountChange={setUnreadNotifications} /></Layout></ProtectedRoute>} /> */}

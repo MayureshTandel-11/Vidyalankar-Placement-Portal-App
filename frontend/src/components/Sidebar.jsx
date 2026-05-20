@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { BriefcaseBusiness, ChevronLeft, ChevronRight, FileText, LayoutDashboard, ListChecks, ShieldCheck, Trash2, UserRound, Users, BarChart3 } from "lucide-react";
+import { BriefcaseBusiness, ChevronLeft, ChevronRight, FileText, LayoutDashboard, ListChecks, ShieldCheck, Trash2, UserRound, Users, BarChart3, TrendingUp } from "lucide-react";
 import { motion as Motion } from "framer-motion";
 
 const roleItems = {
@@ -15,6 +15,7 @@ const roleItems = {
     { label: "Post Opportunities", to: "/post-opportunity", icon: BriefcaseBusiness },
     { label: "My Posts", to: "/my-posts", icon: ListChecks },
     { label: "Students", to: "/students", icon: Users },
+    { label: "Promotions", to: "/promotions", icon: TrendingUp },
     { label: "Analytics", to: "/analytics", icon: BarChart3 },
     { label: "Profile", to: "/profile", icon: UserRound },
   ],
@@ -23,6 +24,7 @@ const roleItems = {
     { label: "Opportunities", to: "/opportunities", icon: BriefcaseBusiness },
     { label: "Create Faculty", to: "/manage-faculty", icon: Users },
     { label: "Students", to: "/students", icon: Users },
+    { label: "Promotions", to: "/promotions", icon: TrendingUp },
     { label: "Analytics", to: "/analytics", icon: BarChart3 },
     { label: "Profile", to: "/profile", icon: ShieldCheck },
   ],
