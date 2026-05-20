@@ -8,12 +8,14 @@ const opportunityTimelineSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
-    // FIX ISSUE 1: Added studentId to enable per-student duplicate detection for Result stage
-    // Allows tracking which student received a final result comment
+    // FIX ISSUE 1: studentId field logic:
+    // - For Result stage: null (entry applies to all selected students)
+    // - For other stages: can be null (general announcement) or specific student ID
+    // - Used for per-student tracking and filtering
     studentId: {
       type: String,
       index: true,
-      default: null,  // null for general stage activation entries, populated for student-specific entries
+      default: null,  // null for general announcements or opportunity-level Result entries
     },
     postedBy: {
       type: mongoose.Schema.Types.ObjectId,
@@ -88,6 +90,20 @@ opportunityTimelineSchema.index(
       studentId: { $exists: true, $ne: null },
       sourceStage: { $exists: true, $ne: null },
       type: "ROUND_SELECTION",
+    },
+  }
+);
+// Unique index for Result stage - only ONE Result comment per opportunity
+// Result comments have studentId = null and apply to all selected students
+opportunityTimelineSchema.index(
+  { opportunityId: 1, stage: 1, type: 1 },
+  {
+    unique: true,
+    sparse: true,
+    partialFilterExpression: {
+      stage: "Result",
+      type: "GENERAL",
+      studentId: { $in: [null] },  // Only for opportunity-level entries, not student-specific
     },
   }
 );

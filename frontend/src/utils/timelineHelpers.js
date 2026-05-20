@@ -81,7 +81,7 @@ export function dedupeTimelineEntries(entries) {
   const sorted = [...(entries || [])].sort(
     (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
   );
-  const byId = new Map();
+  const byContentKey = new Map();
   const roundSelectionKeys = new Set();
 
   for (const entry of sorted) {
@@ -101,7 +101,9 @@ export function dedupeTimelineEntries(entries) {
       }
     }
 
-    const mapKey = entry._id ? String(entry._id) : [
+    // Use content-based key for deduplication to prevent duplicate comments
+    // This ensures that identical comments (same content, stage, student) appear only once
+    const contentKey = [
       entry.opportunityId,
       entry.studentId || "",
       entry.sourceStage || entry.stage || "",
@@ -109,10 +111,10 @@ export function dedupeTimelineEntries(entries) {
       entry.comment || "",
     ].join("|");
 
-    if (!byId.has(mapKey)) {
-      byId.set(mapKey, entry);
+    if (!byContentKey.has(contentKey)) {
+      byContentKey.set(contentKey, entry);
     }
   }
 
-  return [...byId.values()].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  return [...byContentKey.values()].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
 }

@@ -179,28 +179,31 @@ router.post("/:opportunityId", protect, allowRoles("faculty", "admin"), async (r
             code: "STUDENT_NOT_SELECTED_FOR_RESULT"
           });
         }
-
-        // FIX ISSUE 1: Check for existing Result comment for THIS SPECIFIC STUDENT
-        const existingResultComment = await OpportunityTimeline.findOne({
-          opportunityId: opportunity._id,
-          studentId: sid,
-          stage: "Result",
-        });
-
-        if (existingResultComment) {
-          return res.status(409).json({
-            success: false,
-            message: `Final result already posted for student ${sid}. Only one result comment is allowed per student.`,
-            code: "RESULT_COMMENT_EXISTS_FOR_STUDENT"
-          });
-        }
       }
 
-      // Batch insert all timeline entries for Result stage
+      // FIX ISSUE 1: Check if Result comment ALREADY EXISTS for this opportunity
+      // Result stage allows only ONE comment per opportunity (applies to all selected students)
+      const existingResultComment = await OpportunityTimeline.findOne({
+        opportunityId: opportunity._id,
+        studentId: null,
+        stage: "Result",
+        type: "GENERAL",
+      });
+
+      if (existingResultComment) {
+        return res.status(409).json({
+          success: false,
+          message: `Result comment already posted for this opportunity. Only one result comment is allowed.`,
+          code: "RESULT_COMMENT_EXISTS_FOR_OPPORTUNITY"
+        });
+      }
+
+      // For Result stage, create ONE single entry (not per-student)
+      // This single entry applies to all selected students
       if (studentIds && Array.isArray(studentIds) && studentIds.length > 0) {
         const insertStartTime = Date.now();
 
-        console.log("[TIMELINE BATCH INSERT] Starting batch insert", {
+        console.log("[TIMELINE RESULT SINGLE ENTRY] Creating single Result entry for all selected students", {
           opportunityId,
           stage,
           studentCount: studentIdsToProcess.length,
@@ -209,91 +212,124 @@ router.post("/:opportunityId", protect, allowRoles("faculty", "admin"), async (r
           timestamp: new Date().toISOString(),
         });
 
-        const timelineEntries = studentIdsToProcess.map(sid => ({
+        // Create ONE entry for Result stage (applies to all selected students)
+        // studentId is null because this applies to all selected students, not one specific student
+        const timelineEntry = new OpportunityTimeline({
           opportunityId: opportunity._id,
-          studentId: sid,
+          studentId: null,  // FIX: Result entry applies to all selected students, not one student
           postedBy: req.user._id,
           role: req.user.role,
           stage,
           comment: comment.trim(),
           isStageActivation: false,
-          type: "GENERAL",  // Result stage comments are general, not selection messages
-        }));
-
-        const insertedEntries = await OpportunityTimeline.insertMany(timelineEntries);
-        const insertedIds = insertedEntries.map(entry => entry._id);
-
-        console.log("[TIMELINE BATCH INSERT] Entries inserted successfully", {
-          opportunityId,
-          stage,
-          insertCount: insertedEntries.length,
-          insertedIds: insertedIds,
-          insertDuration: Date.now() - insertStartTime,
+          type: "GENERAL",
         });
 
+        try {
+          await timelineEntry.save();
+
+          console.log("[TIMELINE RESULT ENTRY SAVED] Single Result entry saved", {
+            entryId: timelineEntry._id,
+            opportunityId,
+            stage,
+            appliesTo: `${studentIdsToProcess.length} selected students`,
+          });
+        } catch (saveErr) {
+          // Handle duplicate key error (E11000) - entry already created
+          if (saveErr.code === 11000) {
+            console.warn("[TIMELINE RESULT DUPLICATE KEY] Result entry already exists", {
+              opportunityId,
+              stage,
+              errorCode: saveErr.code,
+            });
+
+            // Fetch and return the existing entry instead
+            const existingEntry = await OpportunityTimeline.findOne({
+              opportunityId: opportunity._id,
+              studentId: null,
+              stage: "Result",
+              type: "GENERAL",
+            }).populate("postedBy", "name role");
+
+            if (existingEntry) {
+              console.log("[TIMELINE RESULT DUPLICATE] Returning existing entry", {
+                existingEntryId: existingEntry._id,
+              });
+
+              const io = getIO();
+              const updatedOpp = await Opportunity.findById(opportunityId);
+              if (io) {
+                io.to(`opportunity_${opportunityId}`).emit("timeline:new_entry", {
+                  entry: existingEntry.toObject(),
+                  activeStages: updatedOpp.activeStages,
+                });
+              }
+              return res.status(201).json({
+                data: [existingEntry],
+                message: "Result comment already exists"
+              });
+            }
+          }
+          throw saveErr;
+        }
+
         // CRITICAL FIX: Add Result stage to activeStages if not already there
-        // This ensures the Result stage appears in the selection process bar
         if (!opportunity.activeStages.includes("Result")) {
           await Opportunity.findByIdAndUpdate(opportunityId, { $addToSet: { activeStages: "Result" } });
         }
 
-        // FIX: Fetch ONLY the newly created entries by their IDs (not by comment text which could include old entries)
-        const createdEntries = await OpportunityTimeline.find({
-          _id: { $in: insertedIds },
-        }).populate("postedBy", "name role").lean();
+        // Refetch the entry with proper population for socket emit
+        const populatedEntry = await OpportunityTimeline.findById(timelineEntry._id)
+          .populate("postedBy", "name role")
+          .lean();
 
-        console.log("[TIMELINE BATCH FETCH] Fetched newly created entries", {
+        console.log("[TIMELINE RESULT ENTRY FETCHED] Entry populated for emission", {
+          entryId: populatedEntry._id,
           opportunityId,
-          stage,
-          fetchedCount: createdEntries.length,
-          fetchedIds: createdEntries.map(e => e._id),
+          stage: populatedEntry.stage,
+          appliesTo: `${studentIdsToProcess.length} students`,
         });
 
         // Get updated activeStages (now includes Result stage)
         const updatedOpportunity = await Opportunity.findById(opportunityId);
 
-        // Emit Socket.IO events for each created entry
+        // Emit Socket.IO event with the single entry
         const io = getIO();
-        if (io && createdEntries.length > 0) {
-          console.log("[TIMELINE SOCKET EMIT] Emitting socket events", {
-            opportunityId,
-            stage,
-            entriesCount: createdEntries.length,
+        if (io) {
+          console.log('[TIMELINE SOCKET] Emitting single Result entry', {
+            entryId: populatedEntry._id,
             room: `opportunity_${opportunityId}`,
+            stage: populatedEntry.stage,
+            appliesTo: `${studentIdsToProcess.length} students`,
           });
 
-          for (const entry of createdEntries) {
-            console.log(`[TIMELINE SOCKET EMIT] Emitting event for entry ${entry._id}`, {
-              studentId: entry.studentId,
-              stage: entry.stage,
-            });
+          io.to(`opportunity_${opportunityId}`).emit("timeline:new_entry", {
+            entry: populatedEntry,
+            activeStages: updatedOpportunity.activeStages,
+          });
 
-            io.to(`opportunity_${opportunityId}`).emit("timeline:new_entry", {
-              entry,
-              activeStages: updatedOpportunity.activeStages,
-            });
-
-            // Also emit analytics update event for the specific student
-            // This allows StudentAnalytics component to refetch for this student
+          // Emit analytics update event for each affected student
+          // This allows StudentAnalytics components to refetch for each student
+          for (const sid of studentIdsToProcess) {
             io.emit("analytics:update", {
-              studentId: entry.studentId,
+              studentId: sid,
               opportunityId: opportunityId,
               stage: stage,
-              reason: "Timeline entry posted"
+              reason: "Result comment posted"
             });
           }
         }
 
-        console.log("[TIMELINE BATCH COMPLETE] Response sent", {
+        console.log("[TIMELINE RESULT COMPLETE] Response sent", {
           opportunityId,
           stage,
-          entriesCount: createdEntries.length,
+          appliesTo: `${studentIdsToProcess.length} students`,
           totalDuration: Date.now() - insertStartTime,
         });
 
         return res.status(201).json({
-          data: createdEntries,
-          message: `Timeline entries created for ${createdEntries.length} students`
+          data: [populatedEntry],
+          message: `Result comment posted for ${studentIdsToProcess.length} selected students`
         });
       }
     }
@@ -311,17 +347,16 @@ router.post("/:opportunityId", protect, allowRoles("faculty", "admin"), async (r
     const entryType = "GENERAL";
     const singleSubmitStartTime = Date.now();
 
-    // FIX: For single-student Result submissions, check for duplicate BEFORE creating
+    // FIX: For single-student Result submissions, check for opportunity-level duplicate BEFORE creating
     if (studentId && stage === "Result") {
       console.log("[TIMELINE SINGLE STUDENT RESULT] Checking for existing Result entry", {
         opportunityId,
-        studentId: String(studentId).trim(),
         stage,
       });
 
       const existingTimeline = await OpportunityTimeline.findOne({
         opportunityId: opportunity._id,
-        studentId: String(studentId).trim(),
+        studentId: null,
         stage: "Result",
         type: "GENERAL",
       });
@@ -329,19 +364,17 @@ router.post("/:opportunityId", protect, allowRoles("faculty", "admin"), async (r
       if (existingTimeline) {
         console.log("[TIMELINE SINGLE STUDENT RESULT] Duplicate prevented - entry already exists", {
           opportunityId,
-          studentId: String(studentId).trim(),
           stage,
           existingEntryId: existingTimeline._id,
         });
         return res.status(200).json({
           data: existingTimeline,
-          message: "Duplicate timeline prevented - entry already exists",
+          message: "Result comment already posted",
         });
       }
 
       console.log("[TIMELINE SINGLE STUDENT RESULT] No duplicate found, proceeding with creation", {
         opportunityId,
-        studentId: String(studentId).trim(),
         stage,
       });
     }
@@ -349,7 +382,9 @@ router.post("/:opportunityId", protect, allowRoles("faculty", "admin"), async (r
     // Create timeline entry
     const timelineEntry = new OpportunityTimeline({
       opportunityId: opportunity._id,
-      studentId: studentId ? String(studentId).trim() : null,  // FIX ISSUE 1: Include studentId if provided
+      // FIX: For Result stage, use null studentId (opportunity-level entry applies to all selected students)
+      // For other stages, use studentId if provided
+      studentId: stage === "Result" ? null : (studentId ? String(studentId).trim() : null),
       postedBy: req.user._id,
       role: req.user.role,
       stage,
@@ -362,7 +397,7 @@ router.post("/:opportunityId", protect, allowRoles("faculty", "admin"), async (r
       console.log("[TIMELINE SAVE] Saving timeline entry", {
         opportunityId,
         stage,
-        studentId: studentId ? String(studentId).trim() : null,
+        studentId: stage === "Result" ? null : (studentId ? String(studentId).trim() : null),
         timestamp: new Date().toISOString(),
       });
 
@@ -372,7 +407,7 @@ router.post("/:opportunityId", protect, allowRoles("faculty", "admin"), async (r
         entryId: timelineEntry._id,
         opportunityId,
         stage,
-        studentId: studentId ? String(studentId).trim() : null,
+        studentId: stage === "Result" ? null : (studentId ? String(studentId).trim() : null),
       });
     } catch (saveErr) {
       // Handle duplicate key error (E11000) - entry already created by concurrent request
