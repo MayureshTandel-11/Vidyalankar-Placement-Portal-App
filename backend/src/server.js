@@ -21,6 +21,7 @@ const notificationRoutes = require("./routes/notificationRoutes");
 const offerLetterRoutes = require("./routes/offerLetterRoutes");
 const resultRoutes = require("./routes/resultRoutes");
 const promotionRoutes = require("./routes/promotionRoutes");
+const departmentChangeRoutes = require("./routes/departmentChangeRoutes");
 const { sanitizeRequest } = require("./middleware/sanitizeMiddleware");
 const { seedAdminUser, DEFAULT_ADMIN } = require("./utils/seedAdmin");
 const { setIO } = require("./utils/io");
@@ -145,6 +146,7 @@ app.use("/api/offerLetters", offerLetterRoutes);
 app.use("/api/results", resultRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/promotions", promotionRoutes);
+app.use("/api/department-change-request", departmentChangeRoutes);
 
 // SECURITY: 404 handler (before error handler)
 app.use(notFoundHandler);

@@ -12,6 +12,8 @@ import FacultyOpportunitiesPage from "./pages/FacultyOpportunitiesPage";
 import AdminOpportunitiesPage from "./pages/AdminOpportunitiesPage";
 import MyPostsPage from "./pages/MyPostsPage";
 import StudentDeletionRequestPage from "./pages/StudentDeletionRequestPage";
+import StudentDepartmentChangeRequestPage from "./pages/StudentDepartmentChangeRequestPage";
+import AdminDepartmentRequestsPage from "./pages/AdminDepartmentRequestsPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import PromotionsPage from "./pages/PromotionsPage";
 import { useAuth } from "./context/AuthContext";
@@ -63,6 +65,8 @@ const App = () => {
       <Route path="/analytics" element={<ProtectedRoute allowRoles={["faculty", "admin"]}><AnalyticsPage /></ProtectedRoute>} />
       {/* <Route path="/notifications" element={<ProtectedRoute allowRoles={["student"]}><Layout role="Student"><Notifications onUnreadCountChange={setUnreadNotifications} /></Layout></ProtectedRoute>} /> */}
       <Route path="/request-deletion" element={<ProtectedRoute allowRoles={["student"]}><StudentDeletionRequestPage /></ProtectedRoute>} />
+      <Route path="/department-change-request" element={<ProtectedRoute allowRoles={["student"]}><StudentDepartmentChangeRequestPage /></ProtectedRoute>} />
+      <Route path="/department-requests" element={<ProtectedRoute allowRoles={["admin"]}><AdminDepartmentRequestsPage /></ProtectedRoute>} />
       <Route path="/student/profile" element={<ProtectedRoute allowRoles={["student"]}><StudentProfilePage /></ProtectedRoute>} />
       <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
       <Route path="/student" element={<Navigate to="/dashboard" replace />} />
