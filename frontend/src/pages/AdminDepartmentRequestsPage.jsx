@@ -4,7 +4,7 @@ import api, { extractApiError } from "../api";
 import Layout from "../components/Layout";
 import Footer from "../components/Footer";
 import { PrimaryButton, SectionTitle, StatusMessage } from "../components/ui";
-import { CheckCircle, XCircle, Clock } from "lucide-react";
+import { CheckCircle, XCircle, Clock, AlertCircle, CheckIcon, XIcon } from "lucide-react";
 
 const AdminDepartmentRequestsPage = () => {
   const [requests, setRequests] = useState([]);
@@ -119,8 +119,27 @@ const AdminDepartmentRequestsPage = () => {
   if (loading) {
     return (
       <Layout role="Admin">
-        <div className="flex items-center justify-center py-12">
-          <div className="text-indigo-600">Loading...</div>
+        <div className="space-y-6">
+          {/* Header Skeleton */}
+          <div className="space-y-3">
+            <div className="h-8 bg-gradient-to-r from-slate-200 to-slate-100 rounded-lg w-1/3 animate-pulse"></div>
+            <div className="h-4 bg-slate-100 rounded w-2/3 animate-pulse"></div>
+          </div>
+
+          {/* Filters Skeleton */}
+          <div className="flex gap-2">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="h-10 bg-slate-100 rounded-lg w-20 animate-pulse"></div>
+            ))}
+          </div>
+
+          {/* Table Skeleton */}
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div className="h-12 bg-slate-50 border-b border-slate-200 animate-pulse"></div>
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-16 border-b border-slate-100 bg-white animate-pulse"></div>
+            ))}
+          </div>
         </div>
       </Layout>
     );
@@ -129,155 +148,187 @@ const AdminDepartmentRequestsPage = () => {
   return (
     <>
       <Layout role="Admin">
-        <SectionTitle
-          title="Department Change Requests"
-          subtitle="Review and manage student department change requests"
-        />
-
-        <StatusMessage message={message} />
-        <StatusMessage type="error" message={error} />
-
-        {/* Filter Tabs */}
-        <div className="glass-panel p-4 mb-6">
-          <div className="flex gap-2 flex-wrap">
-            {["all", "pending", "approved", "rejected"].map(status => (
-              <button
-                key={status}
-                onClick={() => setFilterStatus(status)}
-                className={`px-4 py-2 rounded-lg font-medium transition-all ${
-                  filterStatus === status
-                    ? "bg-indigo-600 text-white"
-                    : "bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
-                }`}
-              >
-                {status.charAt(0).toUpperCase() + status.slice(1)}
-                {status === "all"
-                  ? ` (${requests.length})`
-                  : ` (${requests.filter(r => r.status === status).length})`}
-              </button>
-            ))}
+        <div className="space-y-6">
+          {/* Enhanced Header */}
+          <div className="space-y-2">
+            <SectionTitle
+              title="Department Change Requests"
+              subtitle="Review and manage student department change requests"
+            />
+            <div className="flex items-center gap-2 text-sm text-slate-600 pt-2">
+              <AlertCircle size={16} />
+              <span>{filteredRequests.length} request(s) displayed</span>
+            </div>
           </div>
-        </div>
 
-        {/* Table */}
-        <div className="glass-panel overflow-hidden">
-          {filteredRequests.length === 0 ? (
-            <div className="p-8 text-center text-indigo-600">
-              No requests found
+          {/* Status Messages */}
+          <div className="space-y-2">
+            <StatusMessage message={message} />
+            <StatusMessage type="error" message={error} />
+          </div>
+
+          {/* Enhanced Filter Bar */}
+          <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 shadow-sm hover:shadow-md transition-shadow">
+            <div className="flex flex-wrap gap-3">
+              {["all", "pending", "approved", "rejected"].map(status => {
+                const count = status === "all" ? requests.length : requests.filter(r => r.status === status).length;
+                const isActive = filterStatus === status;
+
+                return (
+                  <button
+                    key={status}
+                    onClick={() => setFilterStatus(status)}
+                    className={`px-4 py-2.5 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 text-sm ${
+                      isActive
+                        ? "bg-gradient-to-r from-red-600 to-red-700 text-white shadow-md hover:shadow-lg"
+                        : "bg-slate-50 text-slate-700 border border-slate-200 hover:border-slate-300 hover:bg-slate-100"
+                    }`}
+                  >
+                    <span>{status.charAt(0).toUpperCase() + status.slice(1)}</span>
+                    <span className={`inline-flex items-center justify-center rounded-full w-6 h-6 text-xs font-semibold ${
+                      isActive ? "bg-white/30" : "bg-slate-200"
+                    }`}>
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-indigo-50 border-b border-indigo-200">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-indigo-900">
-                      Student
-                    </th>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-indigo-900">
-                      Current Dept
-                    </th>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-indigo-900">
-                      Requested Dept
-                    </th>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-indigo-900">
-                      Reason
-                    </th>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-indigo-900">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-indigo-900">
-                      Date
-                    </th>
-                    <th className="px-6 py-3 text-left text-sm font-semibold text-indigo-900">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredRequests.map((req, index) => (
-                    <tr
-                      key={req._id}
-                      className={`border-b border-indigo-100 hover:bg-indigo-50 transition ${
-                        index % 2 === 0 ? "bg-white" : "bg-indigo-50/50"
-                      }`}
-                    >
-                      <td className="px-6 py-4 text-sm">
-                        <div>
-                          <p className="font-medium text-indigo-900">
-                            {req.studentId?.name || "N/A"}
-                          </p>
-                          <p className="text-xs text-indigo-600">
-                            {req.studentId?.email || "N/A"}
-                          </p>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-indigo-900">
-                        {req.currentDepartment}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-indigo-900">
-                        {req.requestedDepartment}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-indigo-600">
-                        <span className="line-clamp-2">
-                          {req.reason || "—"}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-sm">
-                        <div className="flex items-center gap-2">
-                          {getStatusIcon(req.status)}
-                          <span className={`px-3 py-1 rounded text-xs font-medium ${getStatusBadgeClass(req.status)}`}>
-                            {req.status.charAt(0).toUpperCase() + req.status.slice(1)}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-indigo-600">
-                        {new Date(req.createdAt).toLocaleDateString()}
-                      </td>
-                      <td className="px-6 py-4 text-sm">
-                        {req.status === "pending" ? (
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => handleApprove(req._id)}
-                              disabled={processing[req._id]}
-                              className="px-3 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200 disabled:opacity-50 transition text-xs font-medium"
-                            >
-                              Approve
-                            </button>
-                            <button
-                              onClick={() => handleReject(req._id)}
-                              disabled={processing[req._id]}
-                              className="px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 disabled:opacity-50 transition text-xs font-medium"
-                            >
-                              Reject
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-indigo-600">
-                            {req.adminRemark && "Remark added"}
-                          </span>
-                        )}
-                      </td>
+          </div>
+
+          {/* Enhanced Table Container */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            {filteredRequests.length === 0 ? (
+              <div className="p-12 text-center">
+                <div className="inline-flex items-center justify-center w-12 h-12 bg-slate-100 rounded-full mb-4">
+                  <AlertCircle size={24} className="text-slate-400" />
+                </div>
+                <p className="text-slate-600 font-medium">No requests found</p>
+                <p className="text-slate-500 text-sm mt-1">Try adjusting your filters</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="sticky top-0 bg-gradient-to-r from-slate-50 to-slate-100 border-b border-slate-200">
+                    <tr>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-slate-700 uppercase tracking-wide">Student</th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-slate-700 uppercase tracking-wide">Current</th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-slate-700 uppercase tracking-wide">Requested</th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-slate-700 uppercase tracking-wide">Reason</th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-slate-700 uppercase tracking-wide">Status</th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-slate-700 uppercase tracking-wide">Date</th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-slate-700 uppercase tracking-wide">Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {filteredRequests.map((req, index) => (
+                      <tr
+                        key={req._id}
+                        className="hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-25 transition duration-150 group"
+                      >
+                        <td className="px-6 py-4 text-sm">
+                          <div>
+                            <p className="font-semibold text-slate-900 group-hover:text-red-600 transition">
+                              {req.studentId?.name || "N/A"}
+                            </p>
+                            <p className="text-xs text-slate-500 mt-0.5">
+                              {req.studentId?.email || "N/A"}
+                            </p>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-slate-700 font-medium">
+                          {req.currentDepartment}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-slate-700 font-medium">
+                          {req.requestedDepartment}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-slate-600">
+                          <span className="line-clamp-2">
+                            {req.reason || "—"}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-sm">
+                          <div className="flex items-center gap-2">
+                            {getStatusIcon(req.status)}
+                            <span className={`px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1 ${getStatusBadgeClass(req.status)}`}>
+                              {req.status === "approved" && <CheckIcon size={12} />}
+                              {req.status === "rejected" && <XIcon size={12} />}
+                              {req.status === "pending" && <Clock size={12} />}
+                              {req.status.charAt(0).toUpperCase() + req.status.slice(1)}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-slate-600">
+                          {new Date(req.createdAt).toLocaleDateString("en-US", {
+                            year: "numeric",
+                            month: "short",
+                            day: "numeric"
+                          })}
+                        </td>
+                        <td className="px-6 py-4 text-sm">
+                          {req.status === "pending" ? (
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => handleApprove(req._id)}
+                                disabled={processing[req._id]}
+                                className="px-3 py-1.5 bg-gradient-to-r from-green-50 to-emerald-50 text-green-700 border border-green-200 rounded-lg hover:border-green-400 hover:from-green-100 hover:to-emerald-100 disabled:opacity-50 transition duration-200 text-xs font-semibold flex items-center gap-1"
+                              >
+                                <CheckIcon size={14} />
+                                Approve
+                              </button>
+                              <button
+                                onClick={() => handleReject(req._id)}
+                                disabled={processing[req._id]}
+                                className="px-3 py-1.5 bg-gradient-to-r from-red-50 to-rose-50 text-red-700 border border-red-200 rounded-lg hover:border-red-400 hover:from-red-100 hover:to-rose-100 disabled:opacity-50 transition duration-200 text-xs font-semibold flex items-center gap-1"
+                              >
+                                <XIcon size={14} />
+                                Reject
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-slate-500 font-medium">
+                              {req.adminRemark ? "✓ Processed" : "—"}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       </Layout>
 
-      {/* Remark Modal */}
+      {/* Enhanced Modal */}
       {showRemarkModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-lg max-w-md w-full p-6">
-            <h3 className="text-lg font-semibold text-indigo-900 mb-4">
-              {remarkData.action === "approve" ? "Approve Request" : "Reject Request"}
-            </h3>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-6 border border-slate-200 animate-in fade-in scale-95 transition-all duration-200">
+            {/* Modal Header */}
+            <div className="space-y-2">
+              <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-gradient-to-r from-red-50 to-rose-50 border border-red-200">
+                {remarkData.action === "approve" ? (
+                  <CheckIcon size={20} className="text-green-600" />
+                ) : (
+                  <XIcon size={20} className="text-red-600" />
+                )}
+              </div>
+              <h3 className="text-lg font-semibold text-slate-900">
+                {remarkData.action === "approve" ? "Approve Request" : "Reject Request"}
+              </h3>
+              <p className="text-sm text-slate-600">
+                {remarkData.action === "approve"
+                  ? "Add an optional note explaining the approval."
+                  : "Add a note explaining the rejection."}
+              </p>
+            </div>
 
+            {/* Textarea */}
             <textarea
               rows="4"
-              className="input-modern mb-4"
-              placeholder="Add an optional remark..."
+              className="w-full px-4 py-3 border border-slate-200 rounded-lg text-sm font-medium placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent resize-none"
+              placeholder={`Add ${remarkData.action === "approve" ? "approval" : "rejection"} note...`}
               value={remarkData.remark}
               onChange={(e) =>
                 setRemarkData({ ...remarkData, remark: e.target.value })
@@ -285,26 +336,38 @@ const AdminDepartmentRequestsPage = () => {
               maxLength={500}
             />
 
-            <p className="text-xs text-indigo-600 mb-4">
-              {remarkData.remark.length}/500 characters
+            <p className="text-xs text-slate-500 flex items-center justify-between">
+              <span>Character count:</span>
+              <span className="font-semibold">{remarkData.remark.length}/500</span>
             </p>
 
-            <div className="flex gap-3">
+            {/* Action Buttons */}
+            <div className="flex gap-3 pt-4">
               <button
                 onClick={() => setShowRemarkModal(false)}
-                className="flex-1 px-4 py-2 bg-indigo-50 text-indigo-700 rounded-lg hover:bg-indigo-100 font-medium transition"
+                className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold transition duration-200 text-sm"
               >
                 Cancel
               </button>
               <button
                 onClick={submitAction}
-                className={`flex-1 px-4 py-2 text-white rounded-lg font-medium transition ${
+                className={`flex-1 px-4 py-2.5 text-white rounded-lg font-semibold transition duration-200 text-sm flex items-center justify-center gap-2 ${
                   remarkData.action === "approve"
-                    ? "bg-green-600 hover:bg-green-700"
-                    : "bg-red-600 hover:bg-red-700"
+                    ? "bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
+                    : "bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700"
                 }`}
               >
-                {remarkData.action === "approve" ? "Approve" : "Reject"}
+                {remarkData.action === "approve" ? (
+                  <>
+                    <CheckIcon size={16} />
+                    Approve
+                  </>
+                ) : (
+                  <>
+                    <XIcon size={16} />
+                    Reject
+                  </>
+                )}
               </button>
             </div>
           </div>
