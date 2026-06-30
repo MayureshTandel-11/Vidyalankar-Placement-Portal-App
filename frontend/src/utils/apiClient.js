@@ -107,7 +107,7 @@ api.interceptors.response.use(
     const data = response?.data;
 
     // Handle 401 Unauthorized - attempt token refresh
-    if (status === 401 && data?.tokenExpired) { // Backend send data which contains : tokenExpired: boolean value 
+    if (status === 401 && data?.tokenExpired) { // Backend send data which contains : tokenExpired: boolean value
 
       if (config._retry) {
         return Promise.reject(error);

@@ -664,12 +664,22 @@ const changePassword = async (req, res) => {
 const requestPasswordResetOtp = async (req, res) => {
   try {
     const email = sanitizeString(req.body.email);
+    const studentId = sanitizeString(req.body.studentId);
     const role = sanitizeString(req.body.role);
 
-    if (!email || !role) return fail(res, 400, "Email and role are required");
-    if (!instituteEmailRegex.test(email)) return fail(res, 400, "Invalid institute email format");
+    if (!role || (!email && !studentId)) {
+      return fail(res, 400, "Role and either email or studentId are required");
+    }
+    if (email && !instituteEmailRegex.test(email)) {
+      return fail(res, 400, "Invalid institute email format");
+    }
 
-    const user = await User.findOne({ email, role });
+    const userQuery = {};
+    if (role) userQuery.role = role;
+    if (email) userQuery.email = email;
+    if (studentId) userQuery.studentId = studentId;
+
+    const user = await User.findOne(userQuery);
     if (!user) return fail(res, 404, "Account not found");
 
     // Generate plain OTP
@@ -679,9 +689,10 @@ const requestPasswordResetOtp = async (req, res) => {
     const hashedOtp = await hashOtp(plainOtp);
 
     await Otp.findOneAndUpdate(
-      { email, role, purpose: "password_reset" },
+      { role, purpose: "password_reset", ...(email ? { email } : {}), ...(studentId ? { studentId } : {}) },
       {
-        email,
+        studentId: user.studentId,
+        email: user.email,
         role,
         purpose: "password_reset",
         otp: hashedOtp,
@@ -694,7 +705,7 @@ const requestPasswordResetOtp = async (req, res) => {
     );
 
     // Send plaintext OTP to user's email
-    await sendOtpEmail(email, plainOtp);
+    await sendOtpEmail(user.email, plainOtp);
 
     return ok(res, { message: "Reset OTP sent successfully" });
   } catch (error) {
@@ -709,24 +720,29 @@ const requestPasswordResetOtp = async (req, res) => {
 const resetPasswordWithOtp = async (req, res) => {
   try {
     const email = sanitizeString(req.body.email);
+    const studentId = sanitizeString(req.body.studentId);
     const role = sanitizeString(req.body.role);
     const plainOtp = sanitizeString(req.body.otp);
     const newPassword = sanitizeString(req.body.newPassword);
     const confirmNewPassword = sanitizeString(req.body.confirmNewPassword);
 
-    if (!email || !role || !plainOtp || !newPassword || !confirmNewPassword) {
-      return fail(res, 400, "All fields are required");
+    if (!role || (!email && !studentId) || !plainOtp || !newPassword || !confirmNewPassword) {
+      return fail(res, 400, "Role, OTP, newPassword and confirmNewPassword are required along with either email or studentId");
     }
     if (newPassword !== confirmNewPassword) return fail(res, 400, "New passwords do not match");
     if (!/^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/.test(newPassword)) {
       return fail(res, 400, "Password must be 8+ chars with uppercase, number and special character");
     }
     // SECURITY: Reject if new password equals email
-    if (newPassword === email) {
+    if (email && newPassword === email) {
       return fail(res, 400, "Password must not equal email");
     }
 
-    const otpDoc = await Otp.findOne({ email, role, purpose: "password_reset" });
+    const otpQuery = { role, purpose: "password_reset" };
+    if (email) otpQuery.email = email;
+    if (studentId) otpQuery.studentId = studentId;
+
+    const otpDoc = await Otp.findOne(otpQuery);
     if (!otpDoc) {
       return fail(res, 400, "OTP not found. Request a new one.");
     }
@@ -758,7 +774,11 @@ const resetPasswordWithOtp = async (req, res) => {
     }
 
     // OTP verified - reset password
-    const user = await User.findOne({ email, role });
+    const userQuery = { role };
+    if (email) userQuery.email = email;
+    if (studentId) userQuery.studentId = studentId;
+
+    const user = await User.findOne(userQuery);
     if (!user) return fail(res, 404, "Account not found");
 
     user.password = await bcrypt.hash(newPassword, BCRYPT_SALT_ROUNDS);

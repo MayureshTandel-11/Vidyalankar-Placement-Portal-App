@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion as Motion } from "framer-motion";
 import { ArrowLeft, Sparkles, CheckCircle } from "lucide-react";
@@ -6,12 +6,14 @@ import api, { extractApiData, extractApiError } from "../api";
 import { useAuth } from "../context/AuthContext";
 import { PrimaryButton, StatusMessage } from "../components/ui";
 import PasswordInput from "../components/PasswordInput";
-import { DEPARTMENTS, YEAR_OPTIONS } from "../constants/departments";
+import { DEPARTMENTS } from "../constants/departments";
+import { getYearsForCourse } from "../utils/courseYearMapping";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 
 const RegisterPage = () => {
   const [step, setStep] = useState(1);
+  const [yearOptions, setYearOptions] = useState([]);
   const [form, setForm] = useState({
     name: "",
     studentId: "",
@@ -28,6 +30,19 @@ const RegisterPage = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
   const instituteEmailRegex = /^[a-z]+(?:\.[a-z]+)+@vsit\.edu\.in$/i;
+
+  // Update year options when department changes
+  useEffect(() => {
+    if (form.department) {
+      const years = getYearsForCourse(form.department);
+      setYearOptions(years);
+      // Clear previously selected year when department changes
+      setForm((prev) => ({ ...prev, year: "" }));
+    } else {
+      setYearOptions([]);
+      setForm((prev) => ({ ...prev, year: "" }));
+    }
+  }, [form.department]);
 
   const register = async () => {
     setError("");
@@ -134,9 +149,9 @@ const RegisterPage = () => {
             </div>
             <div className="space-y-1.5 xs:space-y-2">
               <p className="text-xs font-medium uppercase tracking-wide text-slate-600">Year</p>
-              <select className="input-modern text-xs xs:text-base" onChange={(e) => setForm({ ...form, year: e.target.value })} defaultValue="">
+              <select className="input-modern text-xs xs:text-base" onChange={(e) => setForm({ ...form, year: e.target.value })} defaultValue="" disabled={!form.department}>
                 <option value="" disabled>Select Year</option>
-                {YEAR_OPTIONS.map((year) => (
+                {yearOptions.map((year) => (
                   <option key={year} value={year}>
                     {year}
                   </option>

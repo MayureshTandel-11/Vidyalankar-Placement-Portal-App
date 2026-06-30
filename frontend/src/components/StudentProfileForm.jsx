@@ -11,7 +11,7 @@ import api, {
 } from "../api";
 import { PrimaryButton, StatusMessage } from "./ui";
 import SKILLS_BY_DEPARTMENT from "../constants/skillsByDepartment";
-import { YEAR_OPTIONS } from "../constants/departments";
+import { getYearsForCourse } from "../utils/courseYearMapping";
 import { useAuth } from "../context/AuthContext";
 
 const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
@@ -22,6 +22,7 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
   const [successMsg, setSuccessMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [expandedSections, setExpandedSections] = useState({});
+  const [yearOptions, setYearOptions] = useState([]);
 
   const [formData, setFormData] = useState({
     studentId: "",
@@ -115,6 +116,16 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
     };
     loadProfile();
   }, [isHydrated, token]);
+
+  // Update year options when department changes
+  useEffect(() => {
+    if (department) {
+      const years = getYearsForCourse(department);
+      setYearOptions(years);
+    } else {
+      setYearOptions([]);
+    }
+  }, [department]);
 
   // Expose saveAll method to parent via ref
   useImperativeHandle(ref, () => ({
@@ -737,9 +748,10 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
                     }))
                   }
                   className="input-modern w-full rounded-lg border border-slate-300 bg-white px-4 py-2"
+                  disabled={!department}
                 >
                   <option value="">Select Year</option>
-                  {YEAR_OPTIONS.map((year) => (
+                  {yearOptions.map((year) => (
                     <option key={year} value={year}>
                       {year}
                     </option>

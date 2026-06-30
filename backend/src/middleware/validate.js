@@ -9,7 +9,7 @@ const handleValidationErrors = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     const errorMessages = errors.array().map(error => ({
-      field: error.param,
+      field: error.path || error.param,
       message: error.msg
     }));
     console.warn(`[VALIDATION] Validation failed for ${req.method} ${req.originalUrl}:`, errorMessages);
@@ -87,9 +87,9 @@ const validateLogin = [
  * Validates: OTP is 6-digit numeric string, studentId provided
  */
 const validateVerifyOtp = [
-  body("studentId")
+  body("email")
     .trim()
-    .notEmpty().withMessage("Student ID is required"),
+    .notEmpty().withMessage("Email is required"),
 
   body("otp")
     .trim()
@@ -122,6 +122,7 @@ const validateChangePassword = [
 
   body("confirmNewPassword")
     .trim()
+    .notEmpty().withMessage("Confirm new password is required")
     .custom((value, { req }) => {
       if (value !== req.body.newPassword) {
         throw new Error("Passwords do not match");
@@ -137,6 +138,11 @@ const validateChangePassword = [
  * Validates: email or studentId format
  */
 const validateForgotPasswordRequest = [
+  body("role")
+    .trim()
+    .notEmpty().withMessage("Role is required")
+    .isIn(["student", "admin", "faculty"]).withMessage("Invalid role"),
+
   body("email").optional().trim().toLowerCase().isEmail().withMessage("Invalid email format"),
   body("studentId").optional().trim(),
 
@@ -156,9 +162,26 @@ const validateForgotPasswordRequest = [
  * Validates: OTP is 6-digit, new password meets requirements
  */
 const validatePasswordReset = [
-  body("studentId")
+  body("role")
     .trim()
-    .notEmpty().withMessage("Student ID is required"),
+    .notEmpty().withMessage("Role is required")
+    .isIn(["student", "admin", "faculty"]).withMessage("Invalid role"),
+
+  body("email")
+    .optional()
+    .trim()
+    .isEmail().withMessage("Invalid email format"),
+
+  body("studentId")
+    .optional()
+    .trim(),
+
+  body().custom((value, { req }) => {
+    if (!req.body.email && !req.body.studentId) {
+      throw new Error("Email or Student ID is required");
+    }
+    return true;
+  }),
 
   body("otp")
     .trim()
@@ -170,14 +193,15 @@ const validatePasswordReset = [
     .matches(/[0-9]/).withMessage("Password must contain at least one number")
     .matches(/[!@#$%^&*]/).withMessage("Password must contain at least one special character (!@#$%^&*)")
     .custom((value, { req }) => {
-      if (value === req.body.studentId) {
-        throw new Error("Password must not equal Student ID");
+      if (req.body.email && value === req.body.email) {
+        throw new Error("Password must not equal Email");
       }
       return true;
     }),
 
-  body("confirmPassword")
+  body("confirmNewPassword")
     .trim()
+    .notEmpty().withMessage("Confirm new password is required")
     .custom((value, { req }) => {
       if (value !== req.body.newPassword) {
         throw new Error("Passwords do not match");
