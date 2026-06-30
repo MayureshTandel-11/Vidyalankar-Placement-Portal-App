@@ -109,6 +109,19 @@ export const AuthProvider = ({ children }) => {
     initSocket();
   }, []);
 
+  const updateUser = useCallback((updates) => {
+    setAuth((prev) => {
+      if (!prev.user) {
+        return prev;
+      }
+
+      const nextUser = { ...prev.user, ...updates };
+      const nextState = { ...prev, user: nextUser };
+      localStorage.setItem("placement_auth", JSON.stringify(nextState));
+      return nextState;
+    });
+  }, []);
+
   /**
    * Logout: clear all auth state
    * Clears token from apiClient and localStorage
@@ -194,7 +207,7 @@ export const AuthProvider = ({ children }) => {
   }, [isHydrated, auth.token, auth.user]);
 
   return (
-    <AuthContext.Provider value={{ ...auth, login, logout, isHydrated }}>
+    <AuthContext.Provider value={{ ...auth, login, logout, updateUser, isHydrated }}>
       {children}
     </AuthContext.Provider>
   );

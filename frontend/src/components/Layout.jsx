@@ -9,6 +9,11 @@ import Logo from "./Logo";
 
 const Layout = ({ children, role = "Student" }) => {
   const { user, logout } = useAuth();
+  const profilePhotoSrc =
+    user?.studentPhoto?.url ||
+    (user?.studentPhoto?.data && user?.studentPhoto?.contentType
+      ? `data:${user.studentPhoto.contentType};base64,${user.studentPhoto.data}`
+      : "");
   const navigate = useNavigate();
   const [showMenu, setShowMenu] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
@@ -53,7 +58,11 @@ const Layout = ({ children, role = "Student" }) => {
               className="h-9 px-2 flex items-center gap-1.5 rounded-md border border-slate-200 bg-white/85 text-slate-700 transition hover:border-red-300 hover:text-red-600 flex-shrink-0"
               aria-label="Toggle user profile menu"
             >
-              <UserCircle2 size={18} className="flex-shrink-0" />
+              {profilePhotoSrc ? (
+                <img src={profilePhotoSrc} alt={user?.name || "User"} className="h-6 w-6 rounded-full object-cover" />
+              ) : (
+                <UserCircle2 size={18} className="flex-shrink-0" />
+              )}
               <span className="hidden xs:inline text-xs sm:text-sm truncate max-w-[60px] sm:max-w-none">{user?.name?.split(" ")[0] || "Profile"}</span>
             </button>
 

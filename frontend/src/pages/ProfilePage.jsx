@@ -9,6 +9,11 @@ import { BriefcaseBusiness, GraduationCap, IdCard, Mail, ShieldCheck, UserCircle
 
 const ProfilePage = () => {
   const { user } = useAuth();
+  const profilePhotoSrc =
+    user?.studentPhoto?.url ||
+    (user?.studentPhoto?.data && user?.studentPhoto?.contentType
+      ? `data:${user.studentPhoto.contentType};base64,${user.studentPhoto.data}`
+      : "");
   const role = user?.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : "User";
   const roleMeta = {
     admin: {
@@ -77,7 +82,13 @@ const ProfilePage = () => {
         <section className="glass-panel space-y-6 p-6">
           <h3 className="text-base font-semibold text-slate-800">Profile Info</h3>
           <div className="flex items-center gap-3">
-            <div className="rounded-full bg-indigo-100 p-3 text-indigo-700"><UserCircle2 size={20} /></div>
+            <div className={`flex h-12 w-12 items-center justify-center overflow-hidden rounded-full bg-indigo-100 ${profilePhotoSrc ? "p-0" : "p-3 text-indigo-700"}`}>
+              {profilePhotoSrc ? (
+                <img src={profilePhotoSrc} alt={user?.name || "User"} className="h-full w-full object-cover" />
+              ) : (
+                <UserCircle2 size={20} />
+              )}
+            </div>
             <div>
               <p className="text-lg font-semibold">{user?.name || "User"}</p>
               <p className="text-sm text-slate-600">{user?.role || "-"}</p>

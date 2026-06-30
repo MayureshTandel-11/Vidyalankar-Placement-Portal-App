@@ -15,7 +15,7 @@ import { getYearsForCourse } from "../utils/courseYearMapping";
 import { useAuth } from "../context/AuthContext";
 
 const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
-  const { isHydrated, token } = useAuth();
+  const { isHydrated, token, updateUser } = useAuth();
   const [activeTab, setActiveTab] = useState(1);
   const [loading, setLoading] = useState(false);
   const [savingSection, setSavingSection] = useState(null);
@@ -108,6 +108,13 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
               fileName: profile.studentPhoto?.fileName || "",
             },
           }));
+          updateUser({
+            studentPhoto: {
+              data: profile.studentPhoto?.data || "",
+              contentType: profile.studentPhoto?.contentType || "",
+              fileName: profile.studentPhoto?.fileName || "",
+            },
+          });
         }
       } catch (error) {
         console.error("[Profile] Error loading profile:", error?.response?.status, error?.response?.data || error.message);
@@ -492,6 +499,13 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
             fileName: sp?.fileName || file.name,
           },
         }));
+        updateUser({
+          studentPhoto: {
+            data: sp?.data || base64Payload,
+            contentType: sp?.contentType || contentType,
+            fileName: sp?.fileName || file.name,
+          },
+        });
         setSuccessMsg("Profile photo updated");
         onFormChange && onFormChange();
       } catch (error) {
@@ -553,6 +567,13 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
           fileName: "",
         },
       }));
+      updateUser({
+        studentPhoto: data.studentPhoto || {
+          data: "",
+          contentType: "",
+          fileName: "",
+        },
+      });
       setSuccessMsg("Profile photo deleted successfully");
       onFormChange && onFormChange();
     } catch (error) {
