@@ -1,5 +1,6 @@
 const Opportunity = require("../models/Opportunity");
 const OpportunityAttendance = require("../models/OpportunityAttendance");
+const User = require("../models/User");
 const mongoose = require("mongoose");
 const { sanitizeString } = require("../utils/sanitize");
 const { ok, fail } = require("../utils/apiResponse");
@@ -601,8 +602,14 @@ const applyToOpportunity = async (req, res) => {
       return fail(res, 403, "Faculty and Admin cannot apply for opportunities.");
     }
 
+    const student = await User.findById(req.user._id);
+
+    if (!student) {
+      return fail(res, 404, "Student not found");
+    }
+
     // Validate studentId
-    if (!req.user.studentId) {
+    if (!student.studentId) {
       return fail(res, 400, "Student ID is required. Please complete your profile.");
     }
 
@@ -622,17 +629,22 @@ const applyToOpportunity = async (req, res) => {
     }
 
     // Prepare application data
-    const studentName = (req.user.name || req.user.email || 'Unknown').trim();
-    const applicationData = {
-      studentId: req.user.studentId,
-      studentEmail: req.user.email,
-      studentName,
-      studentDepartment: req.user.department || 'Not specified',
-      studentYear: req.user.year || 'Not specified',
-      studentPhone: req.user.phone || 'Not provided',
-      appliedAt: new Date()
-    };
 
+    const studentName = (student.name || student.email || "Unknown").trim();
+    const applicationData = {
+      studentId: student.studentId,
+      studentEmail: student.email,
+      studentName: student.name,
+      studentDepartment: student.department || "Not specified",
+      studentYear: student.year || "Not specified",
+      studentPhone: student.phone || "Not provided",
+      studentsscPercentage: student.academicInfo?.sscPercentage ?? null,
+      studentHscPercentage: student.academicInfo?.hscPercentage ?? null,
+      studentCgpa: student.academicInfo?.cgpa ?? null,
+      studenttechnicalSkills: student.technicalSkills || [],
+      appliedAt: new Date(),
+    };
+    console.log("Application Data:", applicationData);
     // Add application
     opportunity.applications.push(applicationData);
 
@@ -709,10 +721,15 @@ const getApplicants = async (req, res) => {
         studentId: app.studentId,
         department: app.studentDepartment,
         year: app.studentYear,
-        phone: app.studentPhone
+        phone: app.studentPhone,
+        sscPercentage: app.studentsscPercentage,
+        hscPercentage: app.studentHscPercentage,
+        cgpa: app.studentCgpa,
+        technicalSkills: app.studenttechnicalSkills
       }
     }));
 
+    console.log("Applicants:", applicants);
     return ok(res, applicants);
   } catch (error) {
     return fail(res, 500, "Failed to fetch applicants", error.message);
@@ -921,7 +938,11 @@ const downloadApplicants = async (req, res) => {
         studentId: app.studentId,
         department: app.studentDepartment,
         year: app.studentYear,
-        phone: app.studentPhone
+        phone: app.studentPhone,
+        sscPercentage: app.studentsscPercentage,
+        hscPercentage: app.studentHscPercentage,
+        cgpa: app.studentCgpa,
+        technicalSkills: app.studenttechnicalSkills
       }
     }));
 

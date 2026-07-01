@@ -573,6 +573,10 @@ router.get("/download/:opportunityId/:stage", protect, allowRoles("faculty", "ad
           studentId: app.studentId,
           email: app.studentEmail,
           department: app.studentDepartment,
+          sscPercentage: app.studentsscPercentage || null,
+          hscPercentage: app.studenthscPercentage || null,
+          cgpa: app.studentcgpa || null,
+          technicalSkills: app.studenttechnicalSkills || [],
         };
       });
     }

@@ -685,6 +685,30 @@ const OpportunityCard = ({
                                 <span className="font-medium">Year:</span> {applicant.student.year}
                               </p>
                             )}
+                            {applicant.student.sscPercentage && (
+                              <p className="text-xs text-slate-500 mt-0.5">
+                                <span className="font-medium">SSC Percentage:</span> {applicant.student.sscPercentage}
+                              </p>
+                            )}
+                            {applicant.student.hscPercentage && (
+                              <p className="text-xs text-slate-500 mt-0.5">
+                                <span className="font-medium">HSC Percentage:</span> {applicant.student.hscPercentage}
+                              </p>
+                            )}
+                            {applicant.student.cgpa && (
+                              <p className="text-xs text-slate-500 mt-0.5">
+                                <span className="font-medium">CGPA:</span> {applicant.student.cgpa}
+                              </p>
+                            )}
+                            {applicant.student.technicalSkills && (
+                              <p className="text-xs text-slate-500 mt-0.5">
+                                <span className="font-medium">Technical Skills:</span>{' '}
+                                {Array.isArray(applicant.student.technicalSkills)
+                                  ? applicant.student.technicalSkills.join(', ')
+                                  : applicant.student.technicalSkills}
+                              </p>
+                            )}
+
                           </div>
                           <span className="text-xs font-medium text-slate-500 bg-slate-200 px-2 py-1 rounded flex-shrink-0 whitespace-nowrap">
                             {applicant.student.studentId}

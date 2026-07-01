@@ -42,6 +42,10 @@ const opportunitySchema = new mongoose.Schema(
       studentDepartment: { type: String, required: true, trim: true },
       studentYear: { type: String, trim: true },
       studentPhone: { type: String, trim: true },
+      studentsscPercentage: { type: Number },
+      studentHscPercentage: { type: Number },
+      studentCgpa: { type: Number },
+      studenttechnicalSkills: [{ type: String, trim: true }],
       appliedAt: { type: Date, default: Date.now }
     }],
     activeStages: {
