@@ -3,6 +3,9 @@
  * Converts attendance records to CSV format for download
  */
 
+const { sanitizeFilenameForOS } = require("./filenameUtils");
+const { sortApplicantsAlphabetically } = require("./applicantSort");
+
 /**
  * Escape CSV field values to handle commas, quotes, and newlines
  */
@@ -168,8 +171,8 @@ const generateAttendanceFilename = (driveName = "attendance", stageName = "") =>
 };
 
 /**
- * Convert applicants to CSV string
- * @param {Array} applicants - Array of applicant objects with student data
+ * Convert applicants to CSV string with round-wise columns
+ * @param {Array} applicants - Array of applicant objects with student data and rounds
  * @param {string} opportunityName - Name of the opportunity
  * @returns {string} CSV content
  */
@@ -178,53 +181,141 @@ const generateApplicantsCSV = (applicants, opportunityName = "Opportunity") => {
     return "No applicants found for this opportunity";
   }
 
-  // CSV Headers
+  const sortedApplicants = sortApplicantsAlphabetically(applicants);
+
   const headers = [
     "Sr. No.",
     "Student Name",
-    "Email",
-    "PRN",
+    "Roll Number",
     "Department",
+    "Division",
     "Year",
-    "Phone",
-    "Applied On",
+    "Institute Email",
+    "Personal Gmail",
+    "Gender",
+    "SSC Percentage",
+    "HSC Percentage",
+    "CGPA",
+    "Technical Skills",
+    "Phone Number",
+    "Applied Date",
+    "Aptitude",
+    "Group Discussion",
+    "Technical Interview",
+    "HR Interview",
+    "Result",
   ];
 
-  // Create header row
   const headerRow = headers.map(escapeCSVField).join(",");
 
-  // Create data rows
-  const dataRows = applicants.map((applicant, index) => {
+  const dataRows = sortedApplicants.map((applicant, index) => {
     const student = applicant.student || {};
+    const skills = Array.isArray(student.technicalSkills)
+      ? student.technicalSkills.join("; ")
+      : student.technicalSkills || "";
+    const rounds = applicant.rounds || {};
+
     const cells = [
       escapeCSVField(index + 1),
       escapeCSVField(student.name || "N/A"),
-      escapeCSVField(student.email || "N/A"),
       escapeCSVField(student.studentId || "N/A"),
       escapeCSVField(student.department || "N/A"),
+      escapeCSVField(student.division || ""),
       escapeCSVField(student.year || "N/A"),
+      escapeCSVField(student.email || "N/A"),
+      escapeCSVField(student.personalGmail || ""),
+      escapeCSVField(student.gender || ""),
+      escapeCSVField(student.sscPercentage ?? ""),
+      escapeCSVField(student.hscPercentage ?? ""),
+      escapeCSVField(student.cgpa ?? ""),
+      escapeCSVField(skills),
       escapeCSVField(student.phone || "N/A"),
       escapeCSVField(formatDateTime(applicant.appliedAt)),
+      escapeCSVField(rounds["Aptitude Test"] || "Not Selected"),
+      escapeCSVField(rounds["Group Discussion"] || "Not Selected"),
+      escapeCSVField(rounds["Technical Interview"] || "Not Selected"),
+      escapeCSVField(rounds["HR Interview"] || "Not Selected"),
+      escapeCSVField(rounds.Result || "Not Selected"),
     ];
 
     return cells.join(",");
   });
 
   const lines = [
-    // Header with opportunity name
     `Applicants List - ${escapeCSVField(opportunityName)}`,
     "",
-    // Metadata
-    `Total Applicants,${applicants.length}`,
+    `Total Applicants,${sortedApplicants.length}`,
     `Export Date,${formatDateTime(new Date())}`,
     "",
-    // Column headers
     headerRow,
-    // Data rows
     ...dataRows,
   ];
 
   return lines.join("\n");
+};
+
+/**
+ * Generate student participation analytics CSV — one row per student
+ */
+const generateStudentParticipationCSV = (rows) => {
+  const headers = [
+    "Student Name",
+    "Roll Number",
+    "Department",
+    "Division",
+    "Year",
+    "Institute Email",
+    "Personal Gmail",
+    "Gender",
+    "Total Opportunities Eligible",
+    "Total Opportunities Applied",
+    "Total Aptitude Cleared",
+    "Total GD Cleared",
+    "Total Technical Cleared",
+    "Total HR Cleared",
+    "Total Selected",
+    "Total Rejected",
+    "Application Percentage",
+    "Selection Percentage",
+  ];
+
+  const headerRow = headers.map(escapeCSVField).join(",");
+
+  const dataRows = (rows || []).map((row) =>
+    [
+      escapeCSVField(row.name),
+      escapeCSVField(row.studentId),
+      escapeCSVField(row.department),
+      escapeCSVField(row.division || ""),
+      escapeCSVField(row.year),
+      escapeCSVField(row.email),
+      escapeCSVField(row.personalGmail || ""),
+      escapeCSVField(row.gender || ""),
+      escapeCSVField(row.totalEligible),
+      escapeCSVField(row.totalApplied),
+      escapeCSVField(row.totalClearedAptitude),
+      escapeCSVField(row.totalClearedGD),
+      escapeCSVField(row.totalClearedTechnical),
+      escapeCSVField(row.totalClearedHR),
+      escapeCSVField(row.totalSelected),
+      escapeCSVField(row.totalRejected),
+      escapeCSVField(row.applicationPercentage),
+      escapeCSVField(row.selectionPercentage),
+    ].join(",")
+  );
+
+  return [headerRow, ...dataRows].join("\n");
+};
+
+const generateStudentParticipationFilename = (department = "all") => {
+  const sanitizeName = (name) =>
+    String(name)
+      .toLowerCase()
+      .replace(/\s+/g, "_")
+      .replace(/[^a-z0-9_-]/g, "")
+      .substring(0, 50);
+
+  return `student_participation_${sanitizeName(department || "all")}.csv`;
 };
 
 /**
@@ -233,15 +324,11 @@ const generateApplicantsCSV = (applicants, opportunityName = "Opportunity") => {
  * @returns {string} Filename
  */
 const generateApplicantsFilename = (opportunityName = "opportunity") => {
-  const sanitizeName = (name) =>
-    String(name)
-      .toLowerCase()
-      .replace(/\s+/g, "_")
-      .replace(/[^a-z0-9_-]/g, "")
-      .substring(0, 50);
+  return `${sanitizeFilenameForOS(opportunityName)}.csv`;
+};
 
-  const filename = `applicants_${sanitizeName(opportunityName)}`;
-  return `${filename}.csv`;
+const generateResumesZipFilename = (opportunityName = "opportunity") => {
+  return `${sanitizeFilenameForOS(opportunityName)}_Resumes.zip`;
 };
 
 module.exports = {
@@ -249,6 +336,9 @@ module.exports = {
   generateAttendanceFilename,
   generateApplicantsCSV,
   generateApplicantsFilename,
+  generateResumesZipFilename,
+  generateStudentParticipationCSV,
+  generateStudentParticipationFilename,
   escapeCSVField,
   formatDateTime,
 };

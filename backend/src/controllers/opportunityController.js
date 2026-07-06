@@ -2,20 +2,37 @@ const Opportunity = require("../models/Opportunity");
 const OpportunityAttendance = require("../models/OpportunityAttendance");
 const User = require("../models/User");
 const mongoose = require("mongoose");
+const path = require("path");
+const fs = require("fs");
+const archiver = require("archiver");
 const { sanitizeString } = require("../utils/sanitize");
 const { ok, fail } = require("../utils/apiResponse");
 const { getTodayStart, normalizeDateToStartOfDay, getStatusFromLastDate } = require("../utils/dateUtils");
 const { OPPORTUNITY_BROADCAST_ALL, isValidOpportunityDepartment, DEPARTMENTS } = require("../constants/departments");
+const { GENDER_OPTIONS } = require("../models/User");
 const {
   buildDepartmentAudienceMatch,
   buildYearEligibilityMatch,
+  buildGenderEligibilityMatch,
   userDepartmentMatchesOpportunity,
   canFacultyCollaborateOnOpportunity,
   canFacultyDeleteOpportunity,
   canFacultyEditOpportunityContent,
+  canViewOpportunityAsAudience,
 } = require("../utils/opportunityAccess");
-const { generateApplicantsCSV, generateApplicantsFilename } = require("../utils/csvExport");
-
+const {
+  generateApplicantsCSV,
+  generateApplicantsFilename,
+  generateResumesZipFilename,
+} = require("../utils/csvExport");
+const { sortApplicantsAlphabetically } = require("../utils/applicantSort");
+const { sanitizeFilenameForOS } = require("../utils/filenameUtils");
+const { sendEmail } = require("../utils/sendEmail");
+const {
+  buildAttendanceMap,
+  getRoundCsvLabel,
+  RECRUITMENT_STAGE_ORDER,
+} = require("../utils/roundAnalytics");
 
 const deriveStatusFromLastDate = (lastDate) => {
   console.log(`[OPPORTUNITY]  deriveStatusFromLastDate - SINGLE SOURCE OF TRUTH`);
@@ -101,6 +118,22 @@ const validatePayload = (payload) => {
   return null;
 };
 
+const parseEligibleGenders = (raw) => {
+  if (!raw) return GENDER_OPTIONS;
+  const values = Array.isArray(raw)
+    ? raw.map((item) => sanitizeString(String(item))).filter(Boolean)
+    : String(raw)
+        .split(",")
+        .map((item) => sanitizeString(item))
+        .filter(Boolean);
+  if (values.length === 0) return GENDER_OPTIONS;
+  const invalid = values.filter((g) => !GENDER_OPTIONS.includes(g));
+  if (invalid.length > 0) {
+    throw new Error(`Invalid gender filter values: ${invalid.join(", ")}`);
+  }
+  return values;
+};
+
 const normalizeOpportunity = (doc, userEmail = null) => {
   const raw = doc?.toObject ? doc.toObject() : doc;
   if (!raw) return raw;
@@ -134,6 +167,9 @@ const listOpportunities = async (req, res) => {
       // Add year-based eligibility filtering for students
       if (req.user.role === "student" && req.user.year) {
         Object.assign(filter, buildYearEligibilityMatch(req.user.year));
+      }
+      if (req.user.role === "student" && req.user.gender) {
+        Object.assign(filter, buildGenderEligibilityMatch(req.user.gender));
       }
     }
 
@@ -272,6 +308,7 @@ const createOpportunity = async (req, res) => {
       createdBy: req.user._id,
       createdName: req.user.name || req.user.email || "Unknown",
       lastDate: normalizedLastDate,
+      eligibleGenders: parseEligibleGenders(req.body.eligibleGenders),
     };
 
     // Faculty can only create opportunities for their own department
@@ -377,6 +414,7 @@ const updateOpportunity = async (req, res) => {
         ? req.body.eligibilityCriteria.map(sanitizeString).filter(Boolean).join(", ")
         : sanitizeString(req.body.eligibilityCriteria),
       lastDate: normalizedLastDate,
+      eligibleGenders: parseEligibleGenders(req.body.eligibleGenders ?? existing.eligibleGenders),
     };
 
     // Faculty can only create opportunities for their own department
@@ -456,6 +494,9 @@ const getActiveOpportunities = async (req, res) => {
         console.log(
           `[OPPORTUNITY ACTIVE] Fetching active opportunities for student ${req.user.email} (dept: ${req.user.department}, year: ${req.user.year})`
         );
+      }
+      if (req.user.role === "student" && req.user.gender) {
+        Object.assign(filter, buildGenderEligibilityMatch(req.user.gender));
       } else {
         console.log(
           `[OPPORTUNITY ACTIVE] Fetching active opportunities for ${req.user.role} ${req.user.email} (dept: ${req.user.department})`
@@ -537,6 +578,9 @@ const getArchivedOpportunities = async (req, res) => {
         console.log(
           `[OPPORTUNITY ARCHIVED] Fetching archived opportunities for student ${req.user.email} (dept: ${req.user.department}, year: ${req.user.year})`
         );
+      }
+      if (req.user.role === "student" && req.user.gender) {
+        Object.assign(filter, buildGenderEligibilityMatch(req.user.gender));
       } else {
         console.log(
           `[OPPORTUNITY ARCHIVED] Fetching archived opportunities for ${req.user.role} ${req.user.email} (dept: ${req.user.department})`
@@ -622,6 +666,10 @@ const applyToOpportunity = async (req, res) => {
       return fail(res, 400, "Cannot apply to inactive/archived opportunities");
     }
 
+    if (!canViewOpportunityAsAudience(student, opportunity)) {
+      return fail(res, 403, "You are not eligible for this opportunity");
+    }
+
     // Check if already applied
     const alreadyApplied = opportunity.applications.some(app => app.studentEmail === req.user.email);
     if (alreadyApplied) {
@@ -703,6 +751,74 @@ const getApplicantsCount = async (req, res) => {
   }
 };
 
+const enrichApplicantFromUser = (app, userMap) => {
+  const user = userMap.get(app.studentId) || {};
+  const resumePath = user.resume?.filePath || user.resume?.resumeUrl || "";
+  const hasResume = Boolean(resumePath && String(resumePath).trim());
+  return {
+    _id: app._id,
+    appliedAt: app.appliedAt,
+    student: {
+      name: app.studentName || user.fullName || user.name,
+      fullName: user.fullName || user.name || app.studentName || "",
+      email: app.studentEmail || user.email,
+      personalGmail: user.personalGmail || "",
+      studentId: app.studentId || user.studentId,
+      department: app.studentDepartment || user.department,
+      division: user.division || "",
+      year: app.studentYear || user.year,
+      phone: app.studentPhone || user.phone,
+      gender: user.gender || "",
+      sscPercentage: app.studentsscPercentage ?? user.academicInfo?.sscPercentage ?? "",
+      hscPercentage: app.studentHscPercentage ?? user.academicInfo?.hscPercentage ?? "",
+      cgpa: app.studentCgpa ?? user.academicInfo?.cgpa ?? "",
+      technicalSkills: app.studenttechnicalSkills?.length
+        ? app.studenttechnicalSkills
+        : user.technicalSkills || [],
+      hasResume,
+      resumeFileName: user.resume?.fileName || null,
+    },
+  };
+};
+
+const resolveResumeAbsolutePath = (resume) => {
+  const rel = resume?.filePath || resume?.resumeUrl;
+  if (!rel || !String(rel).trim() || String(rel).startsWith("http")) return null;
+  const absolutePath = path.isAbsolute(rel) ? rel : path.resolve(process.cwd(), rel);
+  return fs.existsSync(absolutePath) ? absolutePath : null;
+};
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const parseEmailList = (value) => {
+  if (!value || !String(value).trim()) return [];
+  return String(value)
+    .split(/[,;]/)
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+};
+
+const validateEmailList = (emails, label) => {
+  for (const email of emails) {
+    if (!EMAIL_REGEX.test(email)) {
+      return `${label} contains an invalid email address: ${email}`;
+    }
+  }
+  return null;
+};
+
+const buildApplicantsPayload = async (opportunity) => {
+  const studentIds = (opportunity.applications || []).map((app) => app.studentId).filter(Boolean);
+  const users = studentIds.length
+    ? await User.find({ studentId: { $in: studentIds } })
+        .select("studentId name fullName email personalGmail department division year phone gender academicInfo technicalSkills resume")
+        .lean()
+    : [];
+  const userMap = new Map(users.map((u) => [u.studentId, u]));
+  const applicants = (opportunity.applications || []).map((app) => enrichApplicantFromUser(app, userMap));
+  return sortApplicantsAlphabetically(applicants);
+};
+
 const getApplicants = async (req, res) => {
   try {
     const opportunity = await Opportunity.findById(req.params.id);
@@ -712,24 +828,8 @@ const getApplicants = async (req, res) => {
       return fail(res, 403, "Access denied.");
     }
 
-    const applicants = opportunity.applications.map(app => ({
-      _id: app._id,
-      appliedAt: app.appliedAt,
-      student: {
-        name: app.studentName,
-        email: app.studentEmail,
-        studentId: app.studentId,
-        department: app.studentDepartment,
-        year: app.studentYear,
-        phone: app.studentPhone,
-        sscPercentage: app.studentsscPercentage,
-        hscPercentage: app.studentHscPercentage,
-        cgpa: app.studentCgpa,
-        technicalSkills: app.studenttechnicalSkills
-      }
-    }));
+    const applicants = await buildApplicantsPayload(opportunity);
 
-    console.log("Applicants:", applicants);
     return ok(res, applicants);
   } catch (error) {
     return fail(res, 500, "Failed to fetch applicants", error.message);
@@ -928,26 +1028,22 @@ const downloadApplicants = async (req, res) => {
       return fail(res, 403, "Access denied. You can only download applicants for opportunities you created or collaborate on.");
     }
 
-    // Prepare applicants data
-    const applicants = opportunity.applications.map(app => ({
-      _id: app._id,
-      appliedAt: app.appliedAt,
-      student: {
-        name: app.studentName,
-        email: app.studentEmail,
-        studentId: app.studentId,
-        department: app.studentDepartment,
-        year: app.studentYear,
-        phone: app.studentPhone,
-        sscPercentage: app.studentsscPercentage,
-        hscPercentage: app.studentHscPercentage,
-        cgpa: app.studentCgpa,
-        technicalSkills: app.studenttechnicalSkills
+    // Prepare applicants data with live user fields and round progress
+    const applicants = await buildApplicantsPayload(opportunity);
+    const attendanceRecords = await OpportunityAttendance.find({ opportunityId: opportunity._id }).lean();
+    const attendanceMap = buildAttendanceMap(attendanceRecords);
+
+    const applicantsWithRounds = applicants.map((applicant) => {
+      const studentId = applicant.student?.studentId;
+      const rounds = {};
+      for (const stage of RECRUITMENT_STAGE_ORDER) {
+        rounds[stage] = getRoundCsvLabel(opportunity, studentId, stage, attendanceMap, attendanceRecords);
       }
-    }));
+      return { ...applicant, rounds };
+    });
 
     // Generate CSV
-    const csvContent = generateApplicantsCSV(applicants, opportunity.announcementHeading);
+    const csvContent = generateApplicantsCSV(applicantsWithRounds, opportunity.announcementHeading);
     const filename = generateApplicantsFilename(opportunity.announcementHeading);
 
     // Set response headers for file download
@@ -959,6 +1055,155 @@ const downloadApplicants = async (req, res) => {
   } catch (error) {
     console.error("[DOWNLOAD APPLICANTS ERROR]", error);
     return fail(res, 500, "Failed to download applicants", error.message);
+  }
+};
+
+/**
+ * Download all applicant resumes as a ZIP (admin only)
+ * GET /api/opportunities/:id/applicants/resumes/download
+ */
+const downloadAllApplicantResumes = async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return fail(res, 400, "Invalid opportunity ID format");
+    }
+
+    const opportunity = await Opportunity.findById(req.params.id);
+    if (!opportunity) {
+      return fail(res, 404, "Opportunity not found");
+    }
+
+    const studentIds = (opportunity.applications || []).map((app) => app.studentId).filter(Boolean);
+    if (studentIds.length === 0) {
+      return fail(res, 404, "No applicants found for this opportunity");
+    }
+
+    const users = await User.find({ studentId: { $in: studentIds } })
+      .select("studentId name fullName resume")
+      .lean();
+
+    const resumeEntries = users
+      .map((user) => {
+        const absolutePath = resolveResumeAbsolutePath(user.resume);
+        if (!absolutePath) return null;
+        const ext = path.extname(absolutePath) || path.extname(user.resume?.fileName || "") || ".pdf";
+        const displayName = sanitizeFilenameForOS(user.fullName || user.name || user.studentId);
+        return {
+          absolutePath,
+          entryName: `${displayName}_${user.studentId}${ext}`,
+        };
+      })
+      .filter(Boolean);
+
+    if (resumeEntries.length === 0) {
+      return fail(res, 404, "No resumes available for download");
+    }
+
+    const filename = generateResumesZipFilename(opportunity.announcementHeading);
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Cache-Control", "no-cache");
+
+    const archive = archiver("zip", { zlib: { level: 5 } });
+    archive.on("error", (err) => {
+      console.error("[DOWNLOAD ALL RESUMES ERROR]", err);
+      if (!res.headersSent) {
+        fail(res, 500, "Failed to create resume ZIP", err.message);
+      }
+    });
+
+    archive.pipe(res);
+
+    for (const entry of resumeEntries) {
+      archive.file(entry.absolutePath, { name: entry.entryName });
+    }
+
+    await archive.finalize();
+  } catch (error) {
+    console.error("[DOWNLOAD ALL RESUMES ERROR]", error);
+    if (!res.headersSent) {
+      return fail(res, 500, "Failed to download resumes", error.message);
+    }
+  }
+};
+
+/**
+ * Send email with attachments for opportunity applicants (admin only)
+ * POST /api/opportunities/:id/applicants/email
+ */
+const sendApplicantEmail = async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return fail(res, 400, "Invalid opportunity ID format");
+    }
+
+    const opportunity = await Opportunity.findById(req.params.id).select("announcementHeading");
+    if (!opportunity) {
+      return fail(res, 404, "Opportunity not found");
+    }
+
+    const to = sanitizeString(req.body.to || "").trim().toLowerCase();
+    const ccList = parseEmailList(req.body.cc);
+    const bccList = parseEmailList(req.body.bcc);
+    const subject = sanitizeString(req.body.subject || "").trim();
+    const message = sanitizeString(req.body.message || "").trim();
+
+    if (!to) {
+      return fail(res, 400, "Receiver email is required");
+    }
+    if (!EMAIL_REGEX.test(to)) {
+      return fail(res, 400, "Receiver email is invalid");
+    }
+
+    const ccError = validateEmailList(ccList, "CC");
+    if (ccError) return fail(res, 400, ccError);
+
+    const bccError = validateEmailList(bccList, "BCC");
+    if (bccError) return fail(res, 400, bccError);
+
+    if (!subject) {
+      return fail(res, 400, "Subject is required");
+    }
+    if (!message) {
+      return fail(res, 400, "Message is required");
+    }
+
+    const files = Array.isArray(req.files) ? req.files : [];
+    if (files.length === 0) {
+      return fail(res, 400, "At least one attachment is required");
+    }
+
+    const MAX_ATTACHMENT_SIZE = 25 * 1024 * 1024;
+    const totalSize = files.reduce((sum, file) => sum + (file.size || 0), 0);
+    if (totalSize > MAX_ATTACHMENT_SIZE) {
+      return fail(res, 400, "Total attachment size exceeds the 25MB limit");
+    }
+
+    const attachments = files.map((file) => ({
+      filename: file.originalname || "attachment",
+      content: file.buffer,
+      contentType: file.mimetype,
+    }));
+
+    await sendEmail({
+      to,
+      cc: ccList.length > 0 ? ccList.join(", ") : undefined,
+      bcc: bccList.length > 0 ? bccList.join(", ") : undefined,
+      subject,
+      text: message,
+      attachments,
+    });
+
+    console.log(`[APPLICANT EMAIL] Sent by ${req.user.email} for opportunity ${opportunity.announcementHeading}`);
+
+    return ok(res, { message: "Email sent successfully" });
+  } catch (error) {
+    console.error("[SEND APPLICANT EMAIL ERROR]", error);
+    const message =
+      error.message?.includes("credentials") || error.message?.includes("Email")
+        ? "Email service is not configured. Please contact the administrator."
+        : "Failed to send email. Please try again.";
+    return fail(res, 500, message, error.message);
   }
 };
 
@@ -974,6 +1219,8 @@ module.exports = {
   getApplicantsCount,
   getApplicants,
   downloadApplicants,
+  downloadAllApplicantResumes,
+  sendApplicantEmail,
   getOpportunityApplications,
   saveStageSelections,
   getStageSelections,

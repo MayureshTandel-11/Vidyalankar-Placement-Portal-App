@@ -134,4 +134,5 @@ module.exports = {
   filterActiveStagesForStudent,
   canStudentSeeTimelineEntry,
   hasApplied,
+  getSelectedInStage,
 };

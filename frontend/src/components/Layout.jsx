@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Bell, Menu, UserCircle2, X } from "lucide-react";
 import { AnimatePresence, motion as Motion } from "framer-motion";
+import api, { extractApiData } from "../api";
 import { useAuth } from "../context/AuthContext";
 import { PrimaryButton } from "./ui";
 import Sidebar from "./Sidebar";
@@ -9,11 +10,53 @@ import Logo from "./Logo";
 
 const Layout = ({ children, role = "Student" }) => {
   const { user, logout } = useAuth();
-  const profilePhotoSrc =
-    user?.studentPhoto?.url ||
-    (user?.studentPhoto?.data && user?.studentPhoto?.contentType
-      ? `data:${user.studentPhoto.contentType};base64,${user.studentPhoto.data}`
-      : "");
+  const [profilePhotoSrc, setProfilePhotoSrc] = useState("");
+  useEffect(() => {
+    let isMounted = true;
+    const resolveProfilePhoto = async () => {
+      const currentPhoto =
+        user?.studentPhoto?.url ||
+        (typeof user?.profileImage === "string" && user.profileImage.startsWith("data:")
+          ? user.profileImage
+          : user?.studentPhoto?.data && user?.studentPhoto?.contentType
+            ? `data:${user.studentPhoto.contentType};base64,${user.studentPhoto.data}`
+            : "");
+
+      if (currentPhoto) {
+        setProfilePhotoSrc(currentPhoto);
+        return;
+      }
+
+      if (!user?._id || user?.role !== "student") {
+        setProfilePhotoSrc("");
+        return;
+      }
+
+      try {
+        const response = await api.get("/student/profile");
+        const data = extractApiData(response);
+        const profile = data?.profile;
+        const profilePhoto = profile?.studentPhoto?.url ||
+          (profile?.studentPhoto?.data && profile?.studentPhoto?.contentType
+            ? `data:${profile.studentPhoto.contentType};base64,${profile.studentPhoto.data}`
+            : "");
+
+        if (isMounted) {
+          setProfilePhotoSrc(profilePhoto);
+        }
+      } catch (error) {
+        console.warn("[LAYOUT] Unable to load profile photo", error);
+        if (isMounted) {
+          setProfilePhotoSrc("");
+        }
+      }
+    };
+
+    resolveProfilePhoto();
+    return () => {
+      isMounted = false;
+    };
+  }, [user?._id, user?.role, user?.profileImage, user?.studentPhoto?.url, user?.studentPhoto?.data, user?.studentPhoto?.contentType]);
   const navigate = useNavigate();
   const [showMenu, setShowMenu] = useState(false);
   const [showProfile, setShowProfile] = useState(false);

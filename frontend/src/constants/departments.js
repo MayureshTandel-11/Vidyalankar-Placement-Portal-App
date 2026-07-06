@@ -29,3 +29,7 @@ export const YEAR_OPTIONS = [
   "Third Year",
   "Masters",
 ];
+
+export const GENDER_OPTIONS = ["Male", "Female", "Other"];
+
+export const CAREER_SURVEY_OPTIONS = ["Placement", "Masters", "Startup", "Business"];

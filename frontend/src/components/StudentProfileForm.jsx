@@ -1,5 +1,5 @@
 import { useState, useEffect, forwardRef, useImperativeHandle } from "react";
-import { BookOpen, Code, Award, Briefcase, Link as LinkIcon, FileText, Image as ImageIcon, X, Plus, ChevronDown, ChevronUp, AlertCircle, CheckCircle, Loader, Trash2 } from "lucide-react";
+import { BookOpen, Code, Award, Briefcase, Link as LinkIcon, FileText, Image as ImageIcon, X, Plus, ChevronDown, ChevronUp, AlertCircle, CheckCircle, Loader, Trash2, UserCircle } from "lucide-react";
 import api, {
   extractApiData,
   extractApiError,
@@ -11,6 +11,7 @@ import api, {
 } from "../api";
 import { PrimaryButton, StatusMessage } from "./ui";
 import SKILLS_BY_DEPARTMENT from "../constants/skillsByDepartment";
+import { GENDER_OPTIONS, CAREER_SURVEY_OPTIONS } from "../constants/departments";
 import { getYearsForCourse } from "../utils/courseYearMapping";
 import { useAuth } from "../context/AuthContext";
 
@@ -34,6 +35,10 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
       cgpa: "",
     },
     phone: "",
+    personalGmail: "",
+    gender: "",
+    division: "",
+    careerSurvey: [],
     technicalSkills: [],
     customSkill: "",
     certifications: [],
@@ -90,6 +95,10 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
               cgpa: profile.academicInfo?.cgpa ?? "",
             },
             phone: profile.phone || "",
+            personalGmail: profile.personalGmail || "",
+            gender: profile.gender || "",
+            division: profile.division || "",
+            careerSurvey: Array.isArray(profile.careerSurvey) ? profile.careerSurvey : [],
             technicalSkills: Array.isArray(profile.technicalSkills) ? profile.technicalSkills : [],
             certifications: Array.isArray(profile.certifications) ? profile.certifications : [],
             projects: Array.isArray(profile.projects) ? profile.projects : [],
@@ -191,6 +200,17 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
           }
         } else {
           failures.push("Fix professional link URLs");
+        }
+
+        try {
+          await api.post("/student/personal-info", {
+            personalGmail: formData.personalGmail?.trim() || "",
+            gender: formData.gender || "",
+            division: formData.division?.trim() || "",
+            careerSurvey: Array.isArray(formData.careerSurvey) ? formData.careerSurvey : [],
+          });
+        } catch (e) {
+          failures.push(extractApiError(e, "Personal info"));
         }
 
         if (failures.length) {
@@ -457,18 +477,22 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const allowed = ["image/jpeg", "image/png", "image/jpg"];
+    const allowed = ["image/jpeg", "image/png", "image/jpg", "image/gif", "image/webp", "image/bmp", "image/svg+xml", "image/heic", "image/heif", "image/avif"];
     if (!allowed.includes(file.type)) {
-      setErrorMsg("Only JPG or PNG images are allowed");
+      setErrorMsg("Only image files are allowed");
       e.target.value = "";
       return;
     }
 
-    if (file.size > 2 * 1024 * 1024) {
-      setErrorMsg("Image must be under 2MB");
+    if (file.size > 5 * 1024 * 1024) {
+      setErrorMsg("Profile image must be 5 MB or smaller.");
       e.target.value = "";
       return;
     }
+
+    console.log("Selected File:", file);
+    console.log("File Size:", file.size);
+    console.log("File Type:", file.type);
 
     setSavingSection(7);
     const reader = new FileReader();
@@ -483,6 +507,7 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
         const base64Payload = comma >= 0 ? result.slice(comma + 1) : result;
         const contentType =
           file.type === "image/jpg" || file.type === "" ? "image/jpeg" : file.type;
+        console.log("Generated Base64 Length:", base64Payload.length);
 
         const response = await uploadStudentPhoto({
           data: base64Payload,
@@ -491,20 +516,18 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
         });
         const data = extractApiData(response);
         const sp = data?.studentPhoto;
+        const nextPhoto = {
+          data: sp?.data || base64Payload,
+          contentType: sp?.contentType || contentType,
+          fileName: sp?.fileName || file.name,
+        };
         setFormData((prev) => ({
           ...prev,
-          studentPhoto: {
-            data: sp?.data || base64Payload,
-            contentType: sp?.contentType || contentType,
-            fileName: sp?.fileName || file.name,
-          },
+          studentPhoto: nextPhoto,
         }));
         updateUser({
-          studentPhoto: {
-            data: sp?.data || base64Payload,
-            contentType: sp?.contentType || contentType,
-            fileName: sp?.fileName || file.name,
-          },
+          studentPhoto: nextPhoto,
+          profileImage: nextPhoto.data ? `data:${nextPhoto.contentType || "image/jpeg"};base64,${nextPhoto.data}` : "",
         });
         setSuccessMsg("Profile photo updated");
         onFormChange && onFormChange();
@@ -602,6 +625,39 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
     } finally {
       setSavingSection(null);
     }
+  };
+
+  const savePersonalInfo = async () => {
+    if (formData.personalGmail?.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.personalGmail.trim())) {
+      setErrorMsg("Personal Gmail must be a valid email address");
+      return;
+    }
+
+    setSavingSection(6);
+    try {
+      await api.post("/student/personal-info", {
+        personalGmail: formData.personalGmail?.trim() || "",
+        gender: formData.gender || "",
+        division: formData.division?.trim() || "",
+        careerSurvey: Array.isArray(formData.careerSurvey) ? formData.careerSurvey : [],
+      });
+      setSuccessMsg("Personal information saved successfully");
+      onFormChange && onFormChange();
+    } catch (error) {
+      setErrorMsg(extractApiError(error, "Failed to save personal information"));
+    } finally {
+      setSavingSection(null);
+    }
+  };
+
+  const toggleCareerSurveyOption = (option) => {
+    setFormData((prev) => {
+      const current = Array.isArray(prev.careerSurvey) ? prev.careerSurvey : [];
+      const next = current.includes(option)
+        ? current.filter((item) => item !== option)
+        : [...current, option];
+      return { ...prev, careerSurvey: next };
+    });
   };
 
   const toggleSection = (sectionId) => {
@@ -716,6 +772,7 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
           <TabButton id={3} label="Certifications" icon={Award} />
           <TabButton id={4} label="Projects" icon={Briefcase} />
           <TabButton id={5} label="Links & Resume" icon={LinkIcon} />
+          <TabButton id={6} label="Personal & Survey" icon={UserCircle} />
         </div>
       </div>
 
@@ -1260,11 +1317,11 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
                 <label className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-indigo-300 p-6 hover:bg-indigo-100 cursor-pointer transition-colors">
                   <ImageIcon size={40} className="mb-2 text-indigo-600" />
                   <span className="text-sm font-medium text-indigo-900 text-center px-2">
-                    {formData.studentPhoto?.fileName ? "Replace profile photo" : "Upload profile photo"} (JPG or PNG, max 2MB)
+                    {formData.studentPhoto?.fileName ? "Replace profile photo" : "Upload profile photo"} (JPG, JPEG, PNG, GIF, WEBP, BMP, SVG, HEIC, HEIF, AVIF, max 5MB)
                   </span>
                   <input
                     type="file"
-                    accept="image/jpeg,image/png,.jpg,.jpeg,.png"
+                    accept="image/jpeg,image/png,image/gif,image/webp,image/bmp,image/svg+xml,image/heic,image/heif,image/avif,.jpg,.jpeg,.png,.gif,.webp,.bmp,.svg,.heic,.heif,.avif"
                     onChange={uploadProfilePhoto}
                     disabled={savingSection === 7}
                     className="hidden"
@@ -1308,6 +1365,75 @@ const StudentProfileForm = forwardRef(({ department, onFormChange }, ref) => {
                 })()}
               </div>
             </div>
+          </div>
+        )}
+
+        {activeTab === 6 && (
+          <div className="space-y-6">
+            <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4 space-y-4">
+              <h3 className="font-semibold text-indigo-900">Personal Information</h3>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700">Personal Gmail</label>
+                <input
+                  type="email"
+                  value={formData.personalGmail}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, personalGmail: e.target.value }))}
+                  placeholder="abc@gmail.com"
+                  className="w-full rounded-lg border border-slate-300 px-4 py-2"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700">Gender</label>
+                <select
+                  value={formData.gender}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, gender: e.target.value }))}
+                  className="w-full rounded-lg border border-slate-300 px-4 py-2"
+                >
+                  <option value="">Select gender</option>
+                  {GENDER_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700">Division</label>
+                <input
+                  type="text"
+                  value={formData.division}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, division: e.target.value }))}
+                  placeholder="e.g., A, B, C"
+                  className="w-full rounded-lg border border-slate-300 px-4 py-2"
+                />
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-purple-200 bg-purple-50 p-4 space-y-4">
+              <h3 className="font-semibold text-purple-900">Career Survey</h3>
+              <p className="text-sm text-slate-700">After completing Final Year, what are your plans?</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {CAREER_SURVEY_OPTIONS.map((option) => (
+                  <label key={option} className="flex items-center gap-3 rounded-lg border border-purple-200 bg-white px-4 py-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.careerSurvey.includes(option)}
+                      onChange={() => toggleCareerSurveyOption(option)}
+                      className="w-4 h-4"
+                    />
+                    <span className="text-sm text-slate-800">{option}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <PrimaryButton
+              onClick={savePersonalInfo}
+              disabled={savingSection === 6}
+              className="w-full rounded-lg py-2"
+            >
+              {savingSection === 6 ? "Saving..." : "Save Personal Information"}
+            </PrimaryButton>
           </div>
         )}
       </div>

@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { setAccessToken, clearAccessToken } from "../utils/apiClient";
 import { initSocket, disconnectSocket } from "../utils/socket";
+import { sanitizeAuthStateForStorage } from "../utils/authStorage";
 
 const AuthContext = createContext(null);
 
@@ -25,9 +26,14 @@ export const AuthProvider = ({ children }) => {
       }
 
       const parsed = JSON.parse(saved);
+      const safeParsed = sanitizeAuthStateForStorage(parsed);
+
+      if (JSON.stringify(safeParsed) !== saved) {
+        localStorage.setItem("placement_auth", JSON.stringify(safeParsed));
+      }
 
       // Defensive: validate parsed data structure
-      if (typeof parsed !== "object" || !parsed.user) {
+      if (typeof safeParsed !== "object" || !safeParsed.user) {
         console.warn("[AUTH] Invalid auth data in localStorage, clearing");
         localStorage.removeItem("placement_auth");
         clearAccessToken();
@@ -35,7 +41,7 @@ export const AuthProvider = ({ children }) => {
       }
 
       // Validate user object has required fields
-      if (typeof parsed.user !== "object" || !parsed.user._id) {
+      if (typeof safeParsed.user !== "object" || !safeParsed.user._id) {
         console.warn("[AUTH] Malformed user object, clearing");
         localStorage.removeItem("placement_auth");
         clearAccessToken();
@@ -44,18 +50,18 @@ export const AuthProvider = ({ children }) => {
 
       if (process.env.NODE_ENV === "development") {
         console.log("[AUTH] Restored user from localStorage:", {
-          userId: parsed.user._id,
-          email: parsed.user.email,
-          role: parsed.user.role
+          userId: safeParsed.user._id,
+          email: safeParsed.user.email,
+          role: safeParsed.user.role
         });
       }
 
       // Set token in apiClient if present
-      if (parsed.token) {
-        setAccessToken(parsed.token);
+      if (safeParsed.token) {
+        setAccessToken(safeParsed.token);
       }
 
-      return parsed;
+      return safeParsed;
     } catch (err) {
       console.error("[AUTH] Error restoring auth state:", err.message);
       clearAccessToken();
@@ -100,10 +106,11 @@ export const AuthProvider = ({ children }) => {
     // Set token in apiClient (in-memory only)
     setAccessToken(token);
 
-    // Update state and persist user info
+    // Update state and persist only lightweight auth info
     const authState = { token, user };
+    const safeAuthState = sanitizeAuthStateForStorage(authState);
     setAuth(authState);
-    localStorage.setItem("placement_auth", JSON.stringify(authState));
+    localStorage.setItem("placement_auth", JSON.stringify(safeAuthState));
 
     // Initialize socket connection with new token
     initSocket();
@@ -117,7 +124,8 @@ export const AuthProvider = ({ children }) => {
 
       const nextUser = { ...prev.user, ...updates };
       const nextState = { ...prev, user: nextUser };
-      localStorage.setItem("placement_auth", JSON.stringify(nextState));
+      const safeNextState = sanitizeAuthStateForStorage(nextState);
+      localStorage.setItem("placement_auth", JSON.stringify(safeNextState));
       return nextState;
     });
   }, []);
@@ -181,8 +189,9 @@ export const AuthProvider = ({ children }) => {
         }
         // Update auth state with new token
         const authState = { token: newToken, user: auth.user };
+        const safeAuthState = sanitizeAuthStateForStorage(authState);
         setAuth(authState);
-        localStorage.setItem("placement_auth", JSON.stringify(authState));
+        localStorage.setItem("placement_auth", JSON.stringify(safeAuthState));
       }
     };
 

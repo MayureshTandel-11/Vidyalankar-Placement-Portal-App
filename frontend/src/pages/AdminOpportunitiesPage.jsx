@@ -6,13 +6,14 @@ import Footer from "../components/Footer";
 import OpportunityForm from "../components/OpportunityForm";
 import OpportunityCard from "../components/OpportunityCard";
 import { EmptyState, SectionTitle, Spinner, StatusMessage } from "../components/ui";
-import { OPPORTUNITY_BROADCAST_ALL } from "../constants/departments";
+import { OPPORTUNITY_BROADCAST_ALL, GENDER_OPTIONS } from "../constants/departments";
 
 const initial = {
   announcementHeading: "",
   type: "Internship",
   description: "",
   eligibilityCriteria: [],
+  eligibleGenders: [...GENDER_OPTIONS],
   lastDate: "",
   department: OPPORTUNITY_BROADCAST_ALL,
   technicalSkills: [],
@@ -76,6 +77,7 @@ const AdminOpportunitiesPage = () => {
           ? form.eligibilityCriteria.filter(Boolean).join(", ")
           : (form.eligibilityCriteria || "").trim(),
         eligibleYears: eligibleYearsArray,
+        eligibleGenders: Array.isArray(form.eligibleGenders) ? form.eligibleGenders : [...GENDER_OPTIONS],
       };
       await api.post("/opportunities", payload);
       resetForm();
@@ -110,6 +112,9 @@ const AdminOpportunitiesPage = () => {
       department: item.department || OPPORTUNITY_BROADCAST_ALL,
       technicalSkills: Array.isArray(item.technicalSkills) ? item.technicalSkills : [],
       applicationLink: item.applicationLink || "",
+      eligibleGenders: Array.isArray(item.eligibleGenders) && item.eligibleGenders.length > 0
+        ? item.eligibleGenders
+        : [...GENDER_OPTIONS],
     });
     setEditingId(id);
   };
@@ -136,6 +141,10 @@ const AdminOpportunitiesPage = () => {
         eligibilityCriteria: Array.isArray(form.eligibilityCriteria)
           ? form.eligibilityCriteria.filter(Boolean).join(", ")
           : (form.eligibilityCriteria || "").trim(),
+        eligibleYears: Array.isArray(form.eligibilityCriteria)
+          ? form.eligibilityCriteria.filter(Boolean)
+          : [],
+        eligibleGenders: Array.isArray(form.eligibleGenders) ? form.eligibleGenders : [...GENDER_OPTIONS],
       };
       await updateOpportunity(editingId, payload);
       resetForm();

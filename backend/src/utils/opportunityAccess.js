@@ -88,6 +88,13 @@ const canViewOpportunityAsAudience = (user, opportunity) => {
     }
   }
 
+  // Check gender eligibility for students (backend-only filter)
+  if (user.role === "student" && Array.isArray(opportunity.eligibleGenders) && opportunity.eligibleGenders.length > 0) {
+    if (user.gender && !opportunity.eligibleGenders.includes(user.gender)) {
+      return false;
+    }
+  }
+
   return true;
 };
 
@@ -108,12 +115,30 @@ const buildYearEligibilityMatch = (userYear) => {
   };
 };
 
+/**
+ * Build a Mongo $match fragment for gender-based filtering (students only).
+ * Opportunities without gender restriction or missing student gender remain visible.
+ */
+const buildGenderEligibilityMatch = (userGender) => {
+  if (!userGender) {
+    return {};
+  }
+  return {
+    $or: [
+      { eligibleGenders: { $exists: false } },
+      { eligibleGenders: { $size: 0 } },
+      { eligibleGenders: userGender },
+    ],
+  };
+};
+
 module.exports = {
   escapeRegex,
   parseOpportunityDepartments,
   userDepartmentMatchesOpportunity,
   buildDepartmentAudienceMatch,
   buildYearEligibilityMatch,
+  buildGenderEligibilityMatch,
   isCreator,
   canFacultyCollaborateOnOpportunity,
   canFacultyDeleteOpportunity,

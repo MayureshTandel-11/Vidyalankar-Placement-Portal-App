@@ -183,8 +183,12 @@ const StudentAnalytics = ({ studentId }) => {
         <h2 className="text-2xl font-bold text-slate-900 mb-4">{student.name}</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 text-sm">
           <div className="space-y-1">
-            <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Email</p>
+            <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Institute Email</p>
             <p className="text-slate-900 font-medium break-words">{student.email}</p>
+          </div>
+          <div className="space-y-1">
+            <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Personal Gmail</p>
+            <p className="text-slate-900 font-medium break-words">{student.personalGmail || "N/A"}</p>
           </div>
           <div className="space-y-1">
             <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">PRN</p>
@@ -195,8 +199,16 @@ const StudentAnalytics = ({ studentId }) => {
             <p className="text-slate-900 font-medium">{student.department}</p>
           </div>
           <div className="space-y-1">
+            <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Division</p>
+            <p className="text-slate-900 font-medium">{student.division || "N/A"}</p>
+          </div>
+          <div className="space-y-1">
             <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Year</p>
             <p className="text-slate-900 font-medium">{student.year || "N/A"}</p>
+          </div>
+          <div className="space-y-1">
+            <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Gender</p>
+            <p className="text-slate-900 font-medium">{student.gender || "N/A"}</p>
           </div>
         </div>
       </div>

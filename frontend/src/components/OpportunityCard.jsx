@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 
 
 import { motion as Motion } from "framer-motion";
-import { Building2, CalendarClock, ExternalLink, GraduationCap, Pencil, Sparkles, Trash2, Badge, FileText, User, Clock, Code, Calendar, Mail, AlertTriangle, X, Download } from "lucide-react";
+import { Building2, CalendarClock, ExternalLink, GraduationCap, Pencil, Sparkles, Trash2, Badge, FileText, User, Clock, Code, Calendar, Mail, AlertTriangle, X, Download, Archive, Loader2 } from "lucide-react";
 import { Modal, PrimaryButton, EmptyState, Spinner, StatusMessage } from "./ui";
 import { DEPARTMENTS, OPPORTUNITY_BROADCAST_ALL } from "../constants/departments";
 import { useAuth } from "../context/AuthContext";
@@ -16,6 +16,13 @@ import OpportunityAttendance from "./OpportunityAttendance";
 import ResultSection from "./ResultSection";
 import { getApplicantsCount, getApplicants } from "../services/opportunitiesService";
 import OfferLetterCard from "./OfferLetterCard";
+import ApplicantEmailCompose from "./ApplicantEmailCompose";
+import { sortApplicantsAlphabetically } from "../utils/applicantSort";
+import {
+  getApplicantsCsvFilename,
+  getResumesZipFilename,
+  parseContentDispositionFilename,
+} from "../utils/applicantFiles";
 
 const toLabel = (value) => {
   if (!value) return "Not specified";
@@ -74,6 +81,8 @@ const OpportunityCard = ({
   const [applicantsLoading, setApplicantsLoading] = useState(false);
   const [applicantsError, setApplicantsError] = useState("");
   const [applicantsDownloading, setApplicantsDownloading] = useState(false);
+  const [resumesZipDownloading, setResumesZipDownloading] = useState(false);
+  const [downloadingResumeId, setDownloadingResumeId] = useState(null);
   const [timelineRefreshKey, setTimelineRefreshKey] = useState(0);
   const [attendanceRefreshKey, setAttendanceRefreshKey] = useState(0);
   const [applicantsRefreshKey, setApplicantsRefreshKey] = useState(0);
@@ -93,6 +102,18 @@ const OpportunityCard = ({
   const shouldShowApplicants =
     userRole === "admin" ||
     (userRole === "faculty" && facultyCanCollaborateOnOpportunity(user, opportunity));
+
+  const isAdmin = userRole === "admin";
+
+  const sortedApplicants = useMemo(
+    () => sortApplicantsAlphabetically(applicants),
+    [applicants]
+  );
+
+  const applicantsWithResume = useMemo(
+    () => sortedApplicants.filter((a) => a.student?.hasResume),
+    [sortedApplicants]
+  );
 
   // Function to refresh active stages
   const refreshActiveStages = useCallback(async () => {
@@ -146,13 +167,10 @@ const OpportunityCard = ({
 
       // Generate filename from response headers or use default
       const contentDisposition = response.headers["content-disposition"];
-      let filename = `applicants_${opportunity.announcementHeading?.replace(/\s+/g, "_")}.csv` || "applicants.csv";
+      let filename = getApplicantsCsvFilename(opportunity.announcementHeading);
 
       if (contentDisposition) {
-        const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
-        if (filenameMatch) {
-          filename = filenameMatch[1];
-        }
+        filename = parseContentDispositionFilename(contentDisposition, filename);
       }
 
       link.href = url;
@@ -169,6 +187,81 @@ const OpportunityCard = ({
       setApplicantsDownloading(false);
     }
   }, [opportunity?._id, opportunity?.announcementHeading]);
+
+  const handleDownloadAllResumes = useCallback(async () => {
+    if (!opportunity?._id || !isAdmin) return;
+    setResumesZipDownloading(true);
+    setApplicantsError("");
+    try {
+      const response = await api.get(`/opportunities/${opportunity._id}/applicants/resumes/download`, {
+        responseType: "blob",
+      });
+
+      const blob = new Blob([response.data], { type: "application/zip" });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      const filename = parseContentDispositionFilename(
+        response.headers["content-disposition"],
+        getResumesZipFilename(opportunity.announcementHeading)
+      );
+
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      let errorMessage = "Failed to download resumes. Please try again.";
+      if (err.response?.data instanceof Blob) {
+        try {
+          const text = await err.response.data.text();
+          const parsed = JSON.parse(text);
+          errorMessage = parsed.message || errorMessage;
+        } catch {
+          /* use default */
+        }
+      } else {
+        errorMessage = err.response?.data?.message || err.message || errorMessage;
+      }
+      setApplicantsError(errorMessage);
+    } finally {
+      setResumesZipDownloading(false);
+    }
+  }, [opportunity?._id, opportunity?.announcementHeading, isAdmin]);
+
+  const handleDownloadResume = useCallback(async (studentId, studentName) => {
+    if (!studentId || !isAdmin) return;
+    setDownloadingResumeId(studentId);
+    setApplicantsError("");
+    try {
+      const response = await api.get(`/student/resumes/download/${studentId}`, {
+        responseType: "blob",
+      });
+
+      const blob = new Blob([response.data]);
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      const contentDisposition = response.headers["content-disposition"];
+      let filename = `${studentName || "resume"}_${studentId}.pdf`;
+      if (contentDisposition) {
+        filename = parseContentDispositionFilename(contentDisposition, filename);
+      }
+
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      const errorMessage =
+        err.response?.data?.message || err.message || "Failed to download resume. Please try again.";
+      setApplicantsError(errorMessage);
+    } finally {
+      setDownloadingResumeId(null);
+    }
+  }, [isAdmin]);
 
   useEffect(() => {
     if (!isOpen || !opportunity?._id || !socket) return;
@@ -623,21 +716,35 @@ const OpportunityCard = ({
               <div className="flex justify-between items-center flex-wrap gap-3">
                 <div>
                   <h3 className="text-base sm:text-lg font-semibold text-slate-800 mb-1">
-                    Applicants ({applicants.length})
+                    Applicants ({sortedApplicants.length})
                   </h3>
                   <p className="text-xs sm:text-sm text-slate-600">
                     Total applications for this opportunity
                   </p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
+                  {isAdmin && (
+                    <button
+                      onClick={handleDownloadAllResumes}
+                      className="flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 hover:text-blue-800 text-xs sm:text-sm font-medium rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={resumesZipDownloading || applicantsWithResume.length === 0}
+                      title="Download all applicant resumes as ZIP"
+                    >
+                      {resumesZipDownloading ? <Loader2 size={16} className="animate-spin" /> : <Archive size={16} />}
+                      <span className="hidden sm:inline">
+                        {resumesZipDownloading ? "Creating ZIP..." : "Download All Resumes"}
+                      </span>
+                      <span className="sm:hidden">{resumesZipDownloading ? "..." : "ZIP"}</span>
+                    </button>
+                  )}
                   <button
                     onClick={handleDownloadApplicants}
                     className="flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 bg-green-50 hover:bg-green-100 border border-green-200 text-green-700 hover:text-green-800 text-xs sm:text-sm font-medium rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
-                    disabled={applicantsDownloading || applicants.length === 0}
+                    disabled={applicantsDownloading || sortedApplicants.length === 0}
                     title="Download applicants list as CSV"
                   >
-                    <Download size={16} />
-                    <span className="hidden sm:inline">{applicantsDownloading ? "Downloading..." : "Download"}</span>
+                    {applicantsDownloading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                    <span className="hidden sm:inline">{applicantsDownloading ? "Downloading..." : "Download Applicants CSV"}</span>
                     <span className="sm:hidden">{applicantsDownloading ? "..." : "CSV"}</span>
                   </button>
                   <button
@@ -659,17 +766,83 @@ const OpportunityCard = ({
                   <AlertTriangle size={16} className="flex-shrink-0" />
                   <span>{applicantsError}</span>
                 </div>
-              ) : applicants.length === 0 ? (
+              ) : sortedApplicants.length === 0 ? (
                 <EmptyState title="No applicants yet" subtitle="Check back later for applications" />
+              ) : isAdmin ? (
+                <div className="overflow-x-auto rounded-lg border border-slate-200">
+                  <table className="min-w-full text-xs sm:text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-semibold text-slate-700">Student Name</th>
+                        <th className="px-3 py-2 text-left font-semibold text-slate-700">Roll No.</th>
+                        <th className="px-3 py-2 text-left font-semibold text-slate-700">Department</th>
+                        <th className="px-3 py-2 text-left font-semibold text-slate-700">Email</th>
+                        <th className="px-3 py-2 text-left font-semibold text-slate-700">Applied</th>
+                        <th className="px-3 py-2 text-center font-semibold text-slate-700">Resume</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sortedApplicants.map((applicant) => {
+                        const student = applicant.student || {};
+                        const displayName = student.fullName || student.name || "N/A";
+                        const isDownloadingThis = downloadingResumeId === student.studentId;
+                        return (
+                          <tr key={applicant._id} className="border-b border-slate-100 hover:bg-slate-50">
+                            <td className="px-3 py-2 font-medium text-slate-800">{displayName}</td>
+                            <td className="px-3 py-2 text-slate-600">{student.studentId}</td>
+                            <td className="px-3 py-2 text-slate-600">{student.department || "N/A"}</td>
+                            <td className="px-3 py-2 text-slate-600 max-w-[180px] truncate" title={student.email}>
+                              {student.email}
+                            </td>
+                            <td className="px-3 py-2 text-slate-600 whitespace-nowrap">
+                              {new Date(applicant.appliedAt).toLocaleDateString()}
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              {student.hasResume ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDownloadResume(student.studentId, displayName)}
+                                  disabled={isDownloadingThis || downloadingResumeId !== null}
+                                  className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  {isDownloadingThis ? (
+                                    <Loader2 size={12} className="animate-spin" />
+                                  ) : (
+                                    <FileText size={12} />
+                                  )}
+                                  {isDownloadingThis ? "..." : "Download Resume"}
+                                </button>
+                              ) : (
+                                <span className="text-xs text-slate-400">No Resume</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               ) : (
                 <div className="space-y-2 sm:space-y-3">
-                  {applicants.map((applicant) => (
+                  {sortedApplicants.map((applicant) => (
                     <div key={applicant._id} className="rounded-lg border border-slate-200 bg-slate-50/50 p-3 sm:p-4 hover:bg-slate-100/50 transition">
                       <div className="space-y-1.5 sm:space-y-2">
                         <div className="flex items-start justify-between gap-2 min-w-0">
                           <div className="flex-1 min-w-0">
                             <p className="font-semibold text-slate-800 text-sm truncate">{applicant.student.name}</p>
-                            <p className="text-xs sm:text-sm text-slate-600 truncate">{applicant.student.email}</p>
+                            <p className="text-xs sm:text-sm text-slate-600 truncate">
+                              <span className="font-medium">Institute Email:</span> {applicant.student.email}
+                            </p>
+                            {applicant.student.personalGmail && (
+                              <p className="text-xs sm:text-sm text-slate-600 truncate">
+                                <span className="font-medium">Personal Gmail:</span> {applicant.student.personalGmail}
+                              </p>
+                            )}
+                            {applicant.student.gender && (
+                              <p className="text-xs text-slate-500 mt-0.5">
+                                <span className="font-medium">Gender:</span> {applicant.student.gender}
+                              </p>
+                            )}
                             {applicant.student.phone && (
                               <p className="text-xs text-slate-600 mt-0.5">
                                 <span className="font-medium">Phone:</span> {applicant.student.phone}
@@ -678,6 +851,7 @@ const OpportunityCard = ({
                             {applicant.student.department && (
                               <p className="text-xs text-slate-500 mt-0.5">
                                 <span className="font-medium">Dept:</span> {applicant.student.department}
+                                {applicant.student.division ? ` · Div: ${applicant.student.division}` : ""}
                               </p>
                             )}
                             {applicant.student.year && (
@@ -702,13 +876,12 @@ const OpportunityCard = ({
                             )}
                             {applicant.student.technicalSkills && (
                               <p className="text-xs text-slate-500 mt-0.5">
-                                <span className="font-medium">Technical Skills:</span>{' '}
+                                <span className="font-medium">Technical Skills:</span>{" "}
                                 {Array.isArray(applicant.student.technicalSkills)
-                                  ? applicant.student.technicalSkills.join(', ')
+                                  ? applicant.student.technicalSkills.join(", ")
                                   : applicant.student.technicalSkills}
                               </p>
                             )}
-
                           </div>
                           <span className="text-xs font-medium text-slate-500 bg-slate-200 px-2 py-1 rounded flex-shrink-0 whitespace-nowrap">
                             {applicant.student.studentId}
@@ -721,6 +894,13 @@ const OpportunityCard = ({
                     </div>
                   ))}
                 </div>
+              )}
+
+              {isAdmin && sortedApplicants.length > 0 && (
+                <ApplicantEmailCompose
+                  opportunityId={opportunity._id}
+                  announcementHeading={opportunity.announcementHeading}
+                />
               )}
             </div>
           )}

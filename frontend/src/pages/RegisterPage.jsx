@@ -6,7 +6,7 @@ import api, { extractApiData, extractApiError } from "../api";
 import { useAuth } from "../context/AuthContext";
 import { PrimaryButton, StatusMessage } from "../components/ui";
 import PasswordInput from "../components/PasswordInput";
-import { DEPARTMENTS } from "../constants/departments";
+import { DEPARTMENTS, GENDER_OPTIONS } from "../constants/departments";
 import { getYearsForCourse } from "../utils/courseYearMapping";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
@@ -21,6 +21,7 @@ const RegisterPage = () => {
     year: "",
     email: "",
     phone: "",
+    gender: "",
     password: "",
     otp: "",
   });
@@ -47,8 +48,8 @@ const RegisterPage = () => {
   const register = async () => {
     setError("");
     setMsg("");
-    if (!form.name.trim() || !form.studentId.trim() || !form.department.trim() || !form.year.trim() || !form.email.trim() || !form.phone.trim() || !form.password.trim()) {
-      setError("Name, student ID, email, department, year, phone and password are required.");
+    if (!form.name.trim() || !form.studentId.trim() || !form.department.trim() || !form.year.trim() || !form.email.trim() || !form.phone.trim() || !form.gender.trim() || !form.password.trim()) {
+      setError("Name, student ID, email, department, year, gender, phone and password are required.");
       return;
     }
     if (!instituteEmailRegex.test(form.email.trim())) {
@@ -154,6 +155,21 @@ const RegisterPage = () => {
                 {yearOptions.map((year) => (
                   <option key={year} value={year}>
                     {year}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1.5 xs:space-y-2">
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-600">Gender</p>
+              <select
+                className="input-modern text-xs xs:text-base"
+                value={form.gender}
+                onChange={(e) => setForm({ ...form, gender: e.target.value })}
+              >
+                <option value="" disabled>Select gender</option>
+                {GENDER_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
                   </option>
                 ))}
               </select>

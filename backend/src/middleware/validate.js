@@ -84,12 +84,12 @@ const validateLogin = [
 
 /**
  * Validation chain for OTP verification
- * Validates: OTP is 6-digit numeric string, studentId provided
+ * Validates: OTP is 6-digit numeric string and studentId is provided
  */
 const validateVerifyOtp = [
-  body("email")
+  body("studentId")
     .trim()
-    .notEmpty().withMessage("Email is required"),
+    .notEmpty().withMessage("Student ID is required"),
 
   body("otp")
     .trim()

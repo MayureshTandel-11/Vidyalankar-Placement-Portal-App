@@ -3,7 +3,19 @@ const Opportunity = require("../models/Opportunity");
 const OpportunityAttendance = require("../models/OpportunityAttendance");
 const mongoose = require("mongoose");
 const { sanitizeString } = require("../utils/sanitize");
-const { isValidDepartment } = require("../constants/departments");
+const { isValidDepartment, isValidYear } = require("../constants/departments");
+const { buildDepartmentAudienceMatch } = require("../utils/opportunityAccess");
+const {
+  buildAttendanceMap,
+  isStudentClearedStage,
+  buildEligibleStudentsQuery,
+  studentMatchesOpportunityEligibility,
+} = require("../utils/roundAnalytics");
+const { getEligibleStagesForStudent, hasApplied } = require("../utils/studentProgression");
+const {
+  generateStudentParticipationCSV,
+  generateStudentParticipationFilename,
+} = require("../utils/csvExport");
 
 /**
  * Get analytics for a student
@@ -148,8 +160,11 @@ const getStudentAnalytics = async (req, res) => {
         student: {
           name: student.name,
           email: student.email,
+          personalGmail: student.personalGmail || "",
+          gender: student.gender || "",
           studentId: student.studentId,
           department: student.department,
+          division: student.division || "",
           year: student.year,
         },
         statistics: {
@@ -292,8 +307,7 @@ const getClassAnalytics = async (req, res) => {
       departmentQuery = { department: sanitizeString(deptParam) };
     }
 
-    const yearFilter =
-      yearParam && ["1st Year", "2nd Year", "3rd Year", "4th Year"].includes(yearParam) ? { year: yearParam } : {};
+    const yearFilter = yearParam && isValidYear(yearParam) ? { year: yearParam } : {};
 
     const searchQ = searchParam ? sanitizeString(searchParam) : "";
     const searchFilter = searchQ
@@ -314,7 +328,7 @@ const getClassAnalytics = async (req, res) => {
       ...yearFilter,
       ...searchFilter,
     })
-      .select("_id studentId name fullName email year department")
+      .select("_id studentId name fullName email personalGmail gender division year department")
       .sort({ fullName: 1, name: 1 })
       .lean();
 
@@ -391,6 +405,9 @@ const getClassAnalytics = async (req, res) => {
         studentId: s.studentId,
         name: s.fullName || s.name,
         email: s.email,
+        personalGmail: s.personalGmail || "",
+        gender: s.gender || "",
+        division: s.division || "",
         year: s.year,
         department: s.department,
       }))
@@ -419,8 +436,241 @@ const getClassAnalytics = async (req, res) => {
   }
 };
 
+const buildStudentScopeQuery = (req, deptParam) => {
+  let departmentQuery = {};
+  if (req.user.role === "faculty") {
+    departmentQuery = { department: req.user.department };
+  } else if (req.user.role === "admin" && deptParam && isValidDepartment(sanitizeString(deptParam))) {
+    departmentQuery = { department: sanitizeString(deptParam) };
+  }
+  return departmentQuery;
+};
+
+/**
+ * Get opportunity-state analytics (per opportunity metrics)
+ * GET /api/student/analytics/opportunity-state
+ */
+const getOpportunityStateAnalytics = async (req, res) => {
+  try {
+    const { department: deptParam, search: searchParam } = req.query;
+    const departmentQuery = buildStudentScopeQuery(req, deptParam);
+
+    let opportunityFilter = {};
+    if (req.user.role === "faculty") {
+      Object.assign(opportunityFilter, buildDepartmentAudienceMatch(req.user.department));
+    } else if (req.user.role === "admin" && deptParam && isValidDepartment(sanitizeString(deptParam))) {
+      Object.assign(opportunityFilter, buildDepartmentAudienceMatch(sanitizeString(deptParam)));
+    }
+
+    const searchQ = searchParam ? sanitizeString(searchParam) : "";
+    if (searchQ) {
+      opportunityFilter.announcementHeading = { $regex: searchQ, $options: "i" };
+    }
+
+    const opportunities = await Opportunity.find(opportunityFilter)
+      .select("_id announcementHeading type department status lastDate applications stageManualSelections eligibleYears eligibleGenders")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    if (opportunities.length === 0) {
+      return res.status(200).json({
+        data: { opportunities: [], totalOpportunities: 0 },
+        message: "No opportunities found",
+      });
+    }
+
+    const opportunityIds = opportunities.map((o) => o._id);
+    const allAttendance = await OpportunityAttendance.find({
+      opportunityId: { $in: opportunityIds },
+    }).lean();
+
+    const attendanceByOpp = new Map();
+    for (const record of allAttendance) {
+      const key = String(record.opportunityId);
+      if (!attendanceByOpp.has(key)) attendanceByOpp.set(key, []);
+      attendanceByOpp.get(key).push(record);
+    }
+
+    const results = await Promise.all(
+      opportunities.map(async (opp) => {
+        const attendanceRecords = attendanceByOpp.get(String(opp._id)) || [];
+        const attendanceMap = buildAttendanceMap(attendanceRecords);
+        const totalApplications = (opp.applications || []).length;
+        const eligibleQuery = buildEligibleStudentsQuery(opp);
+        const totalEligibleStudents = await User.countDocuments({ ...eligibleQuery, ...departmentQuery, role: "student" });
+
+        const countCleared = (stage) => {
+          let count = 0;
+          for (const app of opp.applications || []) {
+            if (isStudentClearedStage(opp, app.studentId, stage, attendanceMap, attendanceRecords)) {
+              count += 1;
+            }
+          }
+          return count;
+        };
+
+        return {
+          opportunityId: opp._id,
+          title: opp.announcementHeading,
+          type: opp.type,
+          department: opp.department,
+          status: opp.status,
+          lastDate: opp.lastDate,
+          totalApplications,
+          totalEligibleStudents,
+          totalAppliedStudents: totalApplications,
+          totalClearedAptitude: countCleared("Aptitude Test"),
+          totalClearedGD: countCleared("Group Discussion"),
+          totalClearedTechnical: countCleared("Technical Interview"),
+          totalClearedHR: countCleared("HR Interview"),
+          totalSelectedStudents: countCleared("Result"),
+        };
+      })
+    );
+
+    return res.status(200).json({
+      data: {
+        opportunities: results,
+        totalOpportunities: results.length,
+      },
+      message: "Opportunity state analytics fetched successfully",
+    });
+  } catch (error) {
+    console.error("[GET OPPORTUNITY STATE ANALYTICS ERROR]", error);
+    return res.status(500).json({ message: error.message || "Failed to fetch opportunity state analytics" });
+  }
+};
+
+/**
+ * Download student participation CSV
+ * GET /api/student/analytics/participation/download
+ */
+const downloadStudentParticipationCSV = async (req, res) => {
+  try {
+    const { department: deptParam, year: yearParam, search: searchParam } = req.query;
+    const departmentQuery = buildStudentScopeQuery(req, deptParam);
+
+    const yearFilter = yearParam && isValidYear(yearParam) ? { year: yearParam } : {};
+    const searchQ = searchParam ? sanitizeString(searchParam) : "";
+    const searchFilter = searchQ
+      ? {
+          $or: [
+            { fullName: { $regex: searchQ, $options: "i" } },
+            { name: { $regex: searchQ, $options: "i" } },
+            { email: { $regex: searchQ, $options: "i" } },
+            { studentId: { $regex: searchQ, $options: "i" } },
+          ],
+        }
+      : {};
+
+    const students = await User.find({
+      role: "student",
+      ...departmentQuery,
+      ...yearFilter,
+      ...searchFilter,
+    })
+      .select("studentId name fullName email personalGmail gender division year department")
+      .sort({ fullName: 1, name: 1 })
+      .lean();
+
+    let opportunityFilter = {};
+    if (req.user.role === "faculty") {
+      Object.assign(opportunityFilter, buildDepartmentAudienceMatch(req.user.department));
+    } else if (req.user.role === "admin" && deptParam && isValidDepartment(sanitizeString(deptParam))) {
+      Object.assign(opportunityFilter, buildDepartmentAudienceMatch(sanitizeString(deptParam)));
+    }
+
+    const opportunities = await Opportunity.find(opportunityFilter)
+      .select("_id department eligibleYears eligibleGenders applications stageManualSelections")
+      .lean();
+
+    const opportunityIds = opportunities.map((o) => o._id);
+    const allAttendance = await OpportunityAttendance.find({
+      opportunityId: { $in: opportunityIds },
+    }).lean();
+
+    const rows = students.map((student) => {
+      const sid = student.studentId;
+      let totalEligible = 0;
+      let totalApplied = 0;
+      let totalClearedAptitude = 0;
+      let totalClearedGD = 0;
+      let totalClearedTechnical = 0;
+      let totalClearedHR = 0;
+      let totalSelected = 0;
+      let totalRejected = 0;
+
+      for (const opp of opportunities) {
+        if (studentMatchesOpportunityEligibility(student, opp)) {
+          totalEligible += 1;
+        }
+        if (!hasApplied(opp, sid)) continue;
+        totalApplied += 1;
+
+        const oppAttendance = allAttendance.filter((r) => String(r.opportunityId) === String(opp._id));
+        const attendanceMap = buildAttendanceMap(oppAttendance);
+
+        if (isStudentClearedStage(opp, sid, "Aptitude Test", attendanceMap, oppAttendance)) totalClearedAptitude += 1;
+        if (isStudentClearedStage(opp, sid, "Group Discussion", attendanceMap, oppAttendance)) totalClearedGD += 1;
+        if (isStudentClearedStage(opp, sid, "Technical Interview", attendanceMap, oppAttendance)) totalClearedTechnical += 1;
+        if (isStudentClearedStage(opp, sid, "HR Interview", attendanceMap, oppAttendance)) totalClearedHR += 1;
+        if (isStudentClearedStage(opp, sid, "Result", attendanceMap, oppAttendance)) totalSelected += 1;
+
+        const rejected = oppAttendance.some(
+          (r) =>
+            String(r.studentId) === String(sid) &&
+            r.status === "absent" &&
+            getEligibleStagesForStudent(opp, sid, oppAttendance).has(r.stage)
+        );
+        if (rejected) totalRejected += 1;
+      }
+
+      const applicationPercentage =
+        totalEligible > 0 ? `${((totalApplied / totalEligible) * 100).toFixed(2)}%` : "0.00%";
+      const selectionPercentage =
+        totalApplied > 0 ? `${((totalSelected / totalApplied) * 100).toFixed(2)}%` : "0.00%";
+
+      return {
+        name: student.fullName || student.name,
+        studentId: student.studentId,
+        department: student.department,
+        division: student.division || "",
+        year: student.year,
+        email: student.email,
+        personalGmail: student.personalGmail || "",
+        gender: student.gender || "",
+        totalEligible,
+        totalApplied,
+        totalClearedAptitude,
+        totalClearedGD,
+        totalClearedTechnical,
+        totalClearedHR,
+        totalSelected,
+        totalRejected,
+        applicationPercentage,
+        selectionPercentage,
+      };
+    });
+
+    const csvContent = generateStudentParticipationCSV(rows);
+    const filename = generateStudentParticipationFilename(
+      req.user.role === "faculty" ? req.user.department : deptParam || "all"
+    );
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Cache-Control", "no-cache");
+    return res.send(csvContent);
+  } catch (error) {
+    console.error("[DOWNLOAD STUDENT PARTICIPATION CSV ERROR]", error);
+    return res.status(500).json({ message: error.message || "Failed to download student participation CSV" });
+  }
+};
+
 module.exports = {
   getStudentAnalytics,
   getOpportunityAnalytics,
   getClassAnalytics,
+  getOpportunityStateAnalytics,
+  downloadStudentParticipationCSV,
 };

@@ -97,8 +97,9 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
-// Body parsing (large JSON for student profile photo base64 payloads)
-app.use(express.json({ limit: "5mb" }));
+// Body parsing (allow 5MB profile photos encoded as base64)
+app.use(express.json({ limit: "7mb" }));
+app.use(express.urlencoded({ extended: true, limit: "7mb" }));
 
 // Serve uploaded resume files as static assets (for direct URL access)
 // Files are stored at backend/uploads/resumes/ and accessible at /uploads/resumes/<filename>

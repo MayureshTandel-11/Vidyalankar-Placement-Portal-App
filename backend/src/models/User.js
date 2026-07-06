@@ -1,6 +1,9 @@
 const mongoose = require("mongoose");
 const { DEPARTMENTS, YEAR_OPTIONS } = require("../constants/departments");
 
+const GENDER_OPTIONS = ["Male", "Female", "Other"];
+const CAREER_SURVEY_OPTIONS = ["Placement", "Masters", "Startup", "Business"];
+
 const userSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true },
@@ -49,6 +52,48 @@ const userSchema = new mongoose.Schema(
       enum: YEAR_OPTIONS,
       required: function () {
         return this.role === "student";
+      },
+    },
+    personalGmail: {
+      type: String,
+      lowercase: true,
+      trim: true,
+      default: "",
+      validate: {
+        validator: function (v) {
+          if (!v) return true;
+          return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+        },
+        message: "Personal Gmail must be a valid email address",
+      },
+    },
+    gender: {
+      type: String,
+      trim: true,
+      default: "",
+      validate: {
+        validator: function (v) {
+          if (!v) return true;
+          return GENDER_OPTIONS.includes(v);
+        },
+        message: "Gender must be Male, Female, or Other",
+      },
+    },
+    division: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    careerSurvey: {
+      type: [String],
+      enum: CAREER_SURVEY_OPTIONS,
+      default: [],
+      validate: {
+        validator: function (v) {
+          if (!Array.isArray(v)) return false;
+          return new Set(v).size === v.length;
+        },
+        message: "Career survey options must be unique",
       },
     },
     academicInfo: {
@@ -193,4 +238,8 @@ userSchema.index({ fullName: 1 });
 userSchema.index({ department: 1, year: 1 });
 userSchema.index({ department: 1, role: 1 });
 
-module.exports = mongoose.model("User", userSchema);
+const User = mongoose.model("User", userSchema);
+
+module.exports = User;
+module.exports.GENDER_OPTIONS = GENDER_OPTIONS;
+module.exports.CAREER_SURVEY_OPTIONS = CAREER_SURVEY_OPTIONS;

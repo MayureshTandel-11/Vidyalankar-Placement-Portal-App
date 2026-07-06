@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, Plus, X } from "lucide-react";
 import { PrimaryButton } from "./ui";
-import { DEPARTMENTS, OPPORTUNITY_BROADCAST_ALL, YEAR_OPTIONS } from "../constants/departments";
+import { DEPARTMENTS, OPPORTUNITY_BROADCAST_ALL, YEAR_OPTIONS, GENDER_OPTIONS } from "../constants/departments";
 import SKILLS_BY_DEPARTMENT from "../constants/skillsByDepartment";
 
 const departmentOptions = DEPARTMENTS;
@@ -61,6 +61,11 @@ const OpportunityForm = ({
   }, [value.technicalSkills]);
 
   const selectedYears = useMemo(() => parseToArray(value.eligibilityCriteria), [value.eligibilityCriteria]);
+  const selectedGenders = useMemo(() => {
+    const raw = value.eligibleGenders;
+    if (Array.isArray(raw) && raw.length > 0) return raw;
+    return [...GENDER_OPTIONS];
+  }, [value.eligibleGenders]);
 
   useEffect(() => {
     const handler = (event) => {
@@ -99,6 +104,13 @@ const OpportunityForm = ({
     const has = selectedYears.includes(year);
     const next = has ? selectedYears.filter((item) => item !== year) : [...selectedYears, year];
     pushNext({ eligibilityCriteria: next });
+  };
+
+  const toggleGenderEligibility = (gender) => {
+    const has = selectedGenders.includes(gender);
+    const next = has ? selectedGenders.filter((item) => item !== gender) : [...selectedGenders, gender];
+    if (next.length === 0) return;
+    pushNext({ eligibleGenders: next });
   };
 
   const handleRemoveSkill = (skill) => {
@@ -270,6 +282,25 @@ const OpportunityForm = ({
               </div>
             </div>
           ) : null}
+        </div>
+
+        {/* Internal gender eligibility — not shown on opportunity cards */}
+        <div className="md:col-span-2">
+          <span className="label-modern text-sm">Internal Gender Filter (not shown publicly)</span>
+          <p className="text-xs text-slate-500 mb-2">Used only for backend eligibility filtering when students browse opportunities.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            {GENDER_OPTIONS.map((gender) => (
+              <label key={gender} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={selectedGenders.includes(gender)}
+                  onChange={() => toggleGenderEligibility(gender)}
+                  className="w-4 h-4"
+                />
+                <span>{gender}</span>
+              </label>
+            ))}
+          </div>
         </div>
 
         {/* Last Date */}

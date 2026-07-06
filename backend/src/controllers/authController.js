@@ -6,7 +6,8 @@ const Otp = require("../models/Otp");
 const { sendOtpEmail } = require("../utils/sendOtpEmail");
 const { sanitizeUserResponse, sanitizeString } = require("../utils/sanitize");
 const { fail, ok } = require("../utils/apiResponse");
-const { isValidDepartment } = require("../constants/departments");
+const { isValidDepartment, isValidYear } = require("../constants/departments");
+const { GENDER_OPTIONS } = require("../models/User");
 
 // Constants
 // 10 rounds (~100ms) is the industry standard recommended by OWASP and bcrypt's own docs.
@@ -119,6 +120,7 @@ const registerStudent = async (req, res) => {
     const email = sanitizeString(req.body.email);
     const phone = sanitizeString(req.body.phone);
     const year = sanitizeString(req.body.year);
+    const gender = sanitizeString(req.body.gender);
     const password = sanitizeString(req.body.password);
 
     console.log(`[AUTH][REGISTER] Incoming registration payload for ${studentId}:`, {
@@ -128,11 +130,12 @@ const registerStudent = async (req, res) => {
       phone: !!phone,
       department: !!department,
       year: !!year,
+      gender: !!gender,
       password: !!password,
     });
 
-    if (!name || !studentId || !department || !email || !phone || !year || !password) {
-      return fail(res, 400, "Name, student ID, email, department, year, phone and password are required");
+    if (!name || !studentId || !department || !email || !phone || !year || !gender || !password) {
+      return fail(res, 400, "Name, student ID, email, department, year, gender, phone and password are required");
     }
     if (!instituteEmailRegex.test(email)) {
       return fail(res, 400, "Email must follow name.surname@vsit.edu.in format");
@@ -143,9 +146,11 @@ const registerStudent = async (req, res) => {
     if (!isValidDepartment(department)) {
       return fail(res, 400, "Invalid department");
     }
-    const validYears = ["1st Year", "2nd Year", "3rd Year", "4th Year"];
-    if (!validYears.includes(year)) {
-      return fail(res, 400, "Year must be one of: 1st Year, 2nd Year, 3rd Year, 4th Year");
+    if (!isValidYear(year)) {
+      return fail(res, 400, "Invalid year value");
+    }
+    if (!GENDER_OPTIONS.includes(gender)) {
+      return fail(res, 400, `Gender must be one of: ${GENDER_OPTIONS.join(", ")}`);
     }
     if (!/^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/.test(password)) {
       return fail(res, 400, "Password must be 8+ chars with uppercase, number and special character");
@@ -191,6 +196,7 @@ const registerStudent = async (req, res) => {
           phone,
           department,
           year,
+          gender,
           password: hashedPassword,
         },
       },
@@ -228,7 +234,8 @@ const registerStudent = async (req, res) => {
       201
     );
   } catch (error) {
-    console.error(`[AUTH][REGISTER][ERROR]`, error.message);
+    console.error(`[AUTH][REGISTER][ERROR] Registration failed:`, error.message);
+    console.error(`[AUTH][REGISTER][STACK]`, error.stack);
     return fail(res, 500, "Registration failed", error.message);
   }
 };
@@ -243,12 +250,20 @@ const verifyOtp = async (req, res) => {
     const plainOtp = sanitizeString(req.body.otp);
 
     console.log(`[AUTH][VERIFY_OTP] Verifying OTP for studentId: ${studentId}`);
+    console.log(`[AUTH][VERIFY_OTP] Request body:`, { studentId, otp: plainOtp ? "[MASKED]" : "missing" });
 
     const otpDoc = await Otp.findOne({ studentId, purpose: "registration" });
     if (!otpDoc) {
       console.log(`[AUTH][VERIFY_OTP] No OTP document found for studentId: ${studentId}`);
       return fail(res, 400, "Registration not found. Please register first.");
     }
+
+    console.log(`[AUTH][VERIFY_OTP] OTP document found for ${studentId}:`, {
+      email: otpDoc.email,
+      expiresAt: otpDoc.expiresAt,
+      failedAttempts: otpDoc.failedAttempts,
+      isExpired: otpDoc.isExpired,
+    });
 
     // SECURITY: Check if OTP is expired
     if (otpDoc.expiresAt < new Date()) {
@@ -283,13 +298,14 @@ const verifyOtp = async (req, res) => {
     }
 
     const registrationData = otpDoc.registrationData;
-    if (!registrationData || !registrationData.name || !registrationData.phone || !registrationData.department || !registrationData.password || !registrationData.year) {
+    if (!registrationData || !registrationData.name || !registrationData.phone || !registrationData.department || !registrationData.password || !registrationData.year || !registrationData.gender) {
       console.error(`[AUTH][VERIFY_OTP] Missing registration data for studentId: ${studentId}`, {
         name: !!registrationData?.name,
         phone: !!registrationData?.phone,
         department: !!registrationData?.department,
         password: !!registrationData?.password,
         year: !!registrationData?.year,
+        gender: !!registrationData?.gender,
       });
       return fail(res, 500, "Registration data corrupted. Please register again.");
     }
@@ -299,7 +315,10 @@ const verifyOtp = async (req, res) => {
       studentId,
       department: registrationData.department,
       year: registrationData.year,
+      gender: registrationData.gender,
       phone: registrationData.phone,
+      email: otpDoc.email,
+      hasPassword: !!registrationData.password,
     });
 
     // Create user with isVerified: true
@@ -311,6 +330,7 @@ const verifyOtp = async (req, res) => {
       email: otpDoc.email,
       phone: registrationData.phone,
       year: registrationData.year,
+      gender: registrationData.gender,
       password: registrationData.password,
       isVerified: true,
     });
@@ -332,7 +352,8 @@ const verifyOtp = async (req, res) => {
       user: sanitizeUserResponse(user)
     });
   } catch (error) {
-    console.error(`[AUTH][VERIFY_OTP][ERROR]`, error.message);
+    console.error(`[AUTH][VERIFY_OTP][ERROR] OTP Verification failed:`, error.message);
+    console.error(`[AUTH][VERIFY_OTP][STACK]`, error.stack);
     return fail(res, 500, "OTP verification failed", error.message);
   }
 };

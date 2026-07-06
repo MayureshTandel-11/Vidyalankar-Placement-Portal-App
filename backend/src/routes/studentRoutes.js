@@ -11,6 +11,8 @@ const {
   getStudentAnalytics,
   getOpportunityAnalytics,
   getClassAnalytics,
+  getOpportunityStateAnalytics,
+  downloadStudentParticipationCSV,
 } = require("../controllers/analyticsController");
 const { protect } = require("../middleware/authMiddleware");
 const { allowRoles } = require("../middleware/roleMiddleware");
@@ -53,6 +55,22 @@ router.get(
   protect,
   allowRoles("faculty", "admin"),
   getClassAnalytics
+);
+
+// Opportunity-state analytics (Faculty/Admin only)
+router.get(
+  "/analytics/opportunity-state",
+  protect,
+  allowRoles("faculty", "admin"),
+  getOpportunityStateAnalytics
+);
+
+// Download student participation CSV (Faculty/Admin only)
+router.get(
+  "/analytics/participation/download",
+  protect,
+  allowRoles("faculty", "admin"),
+  downloadStudentParticipationCSV
 );
 
 // Get opportunity-specific analytics

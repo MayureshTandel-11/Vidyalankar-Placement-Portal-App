@@ -4,15 +4,14 @@ const User = require("../models/User");
 const { ok, fail } = require("../utils/apiResponse");
 const { sanitizeUserResponse, sanitizeString } = require("../utils/sanitize");
 const { ALLOWED_EXT, MIME_FOR_EXT } = require("../middleware/uploadMiddleware");
+const {
+  MAX_PROFILE_PHOTO_BYTES,
+  normalizePhotoContentType,
+  isAllowedProfilePhotoMime,
+  isAllowedProfilePhotoFileName,
+} = require("../utils/profilePhoto");
 
-const MAX_STUDENT_PHOTO_BYTES = 2 * 1024 * 1024;
-const ALLOWED_PHOTO_MIME = new Set(["image/jpeg", "image/png"]);
-
-const normalizePhotoContentType = (raw) => {
-  const s = String(raw || "").trim().toLowerCase();
-  if (s === "image/jpg") return "image/jpeg";
-  return s;
-};
+const MAX_STUDENT_PHOTO_BYTES = MAX_PROFILE_PHOTO_BYTES;
 
 const stripBase64Payload = (raw) => {
   const s = String(raw || "").trim();
@@ -37,6 +36,28 @@ const validateURL = (url) => {
 
 const validatePhone = (phone) => {
   return /^\d{10}$/.test(phone);
+};
+
+const mapAcademicYear = (value) => {
+  if (value === undefined || value === null || value === "") return undefined;
+
+  const normalized = String(value).trim().toLowerCase();
+  const yearMap = {
+    "1st year": 1,
+    "2nd year": 2,
+    "3rd year": 3,
+    "4th year": 4,
+    "first year": 1,
+    "second year": 2,
+    "third year": 3,
+    "masters": 4,
+    "1": 1,
+    "2": 2,
+    "3": 3,
+    "4": 4,
+  };
+
+  return yearMap[normalized];
 };
 
 const isAllowedResumeFile = (filename) => {
@@ -78,6 +99,10 @@ const getStudentProfile = async (req, res) => {
         contentType: "",
         fileName: "",
       },
+      personalGmail: profile.personalGmail || "",
+      gender: profile.gender || "",
+      division: profile.division || "",
+      careerSurvey: Array.isArray(profile.careerSurvey) ? profile.careerSurvey : [],
     };
 
     return ok(res, { profile: profileWithDefaults });
@@ -96,8 +121,8 @@ const updateAcademicInfo = async (req, res) => {
 
     const { year, sscPercentage, hscPercentage, cgpa, phone } = req.body;
 
-    if (year && !["1st Year", "2nd Year", "3rd Year", "4th Year"].includes(year)) {
-      return fail(res, 400, "Year must be one of: 1st Year, 2nd Year, 3rd Year, 4th Year");
+    if (year && !["1st Year", "2nd Year", "3rd Year", "4th Year", "First Year", "Second Year", "Third Year", "Masters"].includes(year)) {
+      return fail(res, 400, "Invalid year value");
     }
 
     const toOptionalNumber = (value, min, max, label) => {
@@ -137,8 +162,9 @@ const updateAcademicInfo = async (req, res) => {
       ...(cgpaNum !== undefined ? { cgpa: cgpaNum } : {}),
     };
 
-    if (year) {
-      academicInfo.year = parseInt(String(year).charAt(0), 10);
+    const mappedAcademicYear = mapAcademicYear(year);
+    if (mappedAcademicYear !== undefined) {
+      academicInfo.year = mappedAcademicYear;
     }
 
     const $set = { academicInfo };
@@ -153,6 +179,12 @@ const updateAcademicInfo = async (req, res) => {
       }
       $set.phone = String(phone).trim();
     }
+
+    console.log("Authenticated User:", req.user);
+    console.log("Request Body:", req.body);
+    const updateData = { ...$set };
+    console.log("Academic Payload:", updateData);
+    console.log("Existing Student:", existing);
 
     const student = await User.findOneAndUpdate(
       { _id: req.user._id, role: "student" },
@@ -170,6 +202,9 @@ const updateAcademicInfo = async (req, res) => {
       phone: student.phone,
     });
   } catch (error) {
+    console.error("Academic Info Save Error");
+    console.error(error);
+    console.error(error.stack);
     return fail(res, 500, "Error updating academic info", error.message);
   }
 };
@@ -597,24 +632,21 @@ const uploadStudentPhoto = async (req, res) => {
 
     const { data, contentType, fileName } = req.body || {};
     const payload = stripBase64Payload(data);
+    console.log("[PROFILE PHOTO] Received Image:", String(data || "").substring(0, 100));
+    console.log("[PROFILE PHOTO] Image Length:", String(data || "").length);
 
     if (!payload) {
       return fail(res, 400, "Image data is required");
     }
 
     const normalizedMime = normalizePhotoContentType(contentType);
-    if (!normalizedMime || !ALLOWED_PHOTO_MIME.has(normalizedMime)) {
-      return fail(res, 400, "Only JPG, JPEG, or PNG images are allowed");
+    if (!normalizedMime || !isAllowedProfilePhotoMime(normalizedMime)) {
+      return fail(res, 400, "Only supported image formats are allowed");
     }
 
     const safeName = sanitizeString(fileName || "");
-    const lowerName = safeName.toLowerCase();
-    const extOk =
-      lowerName.endsWith(".jpg") ||
-      lowerName.endsWith(".jpeg") ||
-      lowerName.endsWith(".png");
-    if (!safeName || !extOk) {
-      return fail(res, 400, "Filename must end with .jpg, .jpeg, or .png");
+    if (!safeName || !isAllowedProfilePhotoFileName(safeName)) {
+      return fail(res, 400, "Filename must have a supported image extension");
     }
 
     let buffer;
@@ -629,7 +661,7 @@ const uploadStudentPhoto = async (req, res) => {
     }
 
     if (buffer.length > MAX_STUDENT_PHOTO_BYTES) {
-      return fail(res, 400, "Image file size must be less than 2MB");
+      return fail(res, 400, "Profile image must be 5 MB or smaller.");
     }
 
     const student = await User.findByIdAndUpdate(
@@ -643,6 +675,8 @@ const uploadStudentPhoto = async (req, res) => {
       },
       { returnDocument: "after", runValidators: true }
     );
+
+    console.log("[PROFILE PHOTO] Saved Image Length:", student?.studentPhoto?.data?.length);
 
     if (!student) {
       return fail(res, 404, "Student not found");
@@ -885,9 +919,69 @@ const deleteStudentPhoto = async (req, res) => {
   }
 };
 
+// Update personal info (personal Gmail, gender, division, career survey)
+const updatePersonalInfo = async (req, res) => {
+  try {
+    if (req.user.role !== "student") {
+      return fail(res, 403, "Only students can update personal info");
+    }
+
+    const { personalGmail, gender, division, careerSurvey } = req.body;
+    const { GENDER_OPTIONS, CAREER_SURVEY_OPTIONS } = require("../models/User");
+    const $set = {};
+
+    if (personalGmail !== undefined) {
+      const email = sanitizeString(personalGmail);
+      if (email && !validateEmail(email)) {
+        return fail(res, 400, "Personal Gmail must be a valid email address");
+      }
+      $set.personalGmail = email || "";
+    }
+
+    if (gender !== undefined) {
+      const g = sanitizeString(gender);
+      if (g && !GENDER_OPTIONS.includes(g)) {
+        return fail(res, 400, `Gender must be one of: ${GENDER_OPTIONS.join(", ")}`);
+      }
+      $set.gender = g || null;
+    }
+
+    if (division !== undefined) {
+      $set.division = sanitizeString(division) || "";
+    }
+
+    if (careerSurvey !== undefined) {
+      if (!Array.isArray(careerSurvey)) {
+        return fail(res, 400, "Career survey must be an array");
+      }
+      const unique = [...new Set(careerSurvey.map((item) => sanitizeString(item)).filter(Boolean))];
+      const invalid = unique.filter((item) => !CAREER_SURVEY_OPTIONS.includes(item));
+      if (invalid.length > 0) {
+        return fail(res, 400, `Invalid career survey options: ${invalid.join(", ")}`);
+      }
+      $set.careerSurvey = unique;
+    }
+
+    if (Object.keys($set).length === 0) {
+      return fail(res, 400, "No valid fields to update");
+    }
+
+    const updated = await User.findByIdAndUpdate(req.user._id, { $set }, { returnDocument: "after", runValidators: true });
+    if (!updated) {
+      return fail(res, 404, "Student not found");
+    }
+
+    return ok(res, { profile: sanitizeUserResponse(updated), message: "Personal info updated successfully" });
+  } catch (error) {
+    console.error("[UPDATE PERSONAL INFO ERROR]", error);
+    return fail(res, 500, "Error updating personal info", error.message);
+  }
+};
+
 module.exports = {
   getStudentProfile,
   updateAcademicInfo,
+  updatePersonalInfo,
   updateTechnicalSkills,
   addCertification,
   updateCertification,

@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const { isValidOpportunityDepartment, YEAR_OPTIONS } = require("../constants/departments");
+const { GENDER_OPTIONS } = require("./User");
 const { getStatusFromLastDate } = require("../utils/dateUtils");
 
 // Status logic: Compare lastDate with today's start date
@@ -27,6 +28,11 @@ const opportunitySchema = new mongoose.Schema(
       type: [String],
       enum: YEAR_OPTIONS,
       default: YEAR_OPTIONS,
+    },
+    eligibleGenders: {
+      type: [String],
+      enum: GENDER_OPTIONS,
+      default: GENDER_OPTIONS,
     },
     lastDate: { type: Date, required: true },
     status: { type: String, enum: ["active", "archived"], default: "active", index: true },

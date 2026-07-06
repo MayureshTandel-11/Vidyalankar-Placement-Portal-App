@@ -19,11 +19,14 @@ import { facultyCanCollaborateOnOpportunity, facultyCanDeleteOpportunity } from 
 
 const LAST_DEPARTMENT_KEY = "lastDepartment";
 
+import { GENDER_OPTIONS } from "../constants/departments";
+
 const getInitialForm = (facultyDepartment) => ({
   announcementHeading: "",
   type: "Internship",
   description: "",
   eligibilityCriteria: [],
+  eligibleGenders: [...GENDER_OPTIONS],
   lastDate: "",
   department: facultyDepartment || "",
   technicalSkills: [],
@@ -42,6 +45,9 @@ const normalizeToForm = (item) => ({
   department: item.department || "",
   technicalSkills: Array.isArray(item.technicalSkills) ? item.technicalSkills : [],
   applicationLink: item.applicationLink || "",
+  eligibleGenders: Array.isArray(item.eligibleGenders) && item.eligibleGenders.length > 0
+    ? item.eligibleGenders
+    : [...GENDER_OPTIONS],
 });
 
 const isArchived = (item) => {
@@ -177,6 +183,10 @@ const FacultyOpportunitiesPage = () => {
       eligibilityCriteria: Array.isArray(form.eligibilityCriteria)
         ? form.eligibilityCriteria.filter(Boolean).join(", ")
         : (form.eligibilityCriteria || "").trim(),
+      eligibleYears: Array.isArray(form.eligibilityCriteria)
+        ? form.eligibilityCriteria.filter(Boolean)
+        : [],
+      eligibleGenders: Array.isArray(form.eligibleGenders) ? form.eligibleGenders : [...GENDER_OPTIONS],
     };
     console.log('[FACULTY_FORM] Building payload with department:', {
       department: payload.department,

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Layout from "../components/Layout";
 import Footer from "../components/Footer";
 import PasswordInput from "../components/PasswordInput";
@@ -9,11 +9,53 @@ import { BriefcaseBusiness, GraduationCap, IdCard, Mail, ShieldCheck, UserCircle
 
 const ProfilePage = () => {
   const { user } = useAuth();
-  const profilePhotoSrc =
-    user?.studentPhoto?.url ||
-    (user?.studentPhoto?.data && user?.studentPhoto?.contentType
-      ? `data:${user.studentPhoto.contentType};base64,${user.studentPhoto.data}`
-      : "");
+  const [profilePhotoSrc, setProfilePhotoSrc] = useState("");
+  useEffect(() => {
+    let isMounted = true;
+    const resolveProfilePhoto = async () => {
+      const currentPhoto =
+        user?.studentPhoto?.url ||
+        (typeof user?.profileImage === "string" && user.profileImage.startsWith("data:")
+          ? user.profileImage
+          : user?.studentPhoto?.data && user?.studentPhoto?.contentType
+            ? `data:${user.studentPhoto.contentType};base64,${user.studentPhoto.data}`
+            : "");
+
+      if (currentPhoto) {
+        setProfilePhotoSrc(currentPhoto);
+        return;
+      }
+
+      if (!user?._id || user?.role !== "student") {
+        setProfilePhotoSrc("");
+        return;
+      }
+
+      try {
+        const response = await api.get("/student/profile");
+        const data = extractApiData(response);
+        const profile = data?.profile;
+        const profilePhoto = profile?.studentPhoto?.url ||
+          (profile?.studentPhoto?.data && profile?.studentPhoto?.contentType
+            ? `data:${profile.studentPhoto.contentType};base64,${profile.studentPhoto.data}`
+            : "");
+
+        if (isMounted) {
+          setProfilePhotoSrc(profilePhoto);
+        }
+      } catch (error) {
+        console.warn("[PROFILE] Unable to load profile photo", error);
+        if (isMounted) {
+          setProfilePhotoSrc("");
+        }
+      }
+    };
+
+    resolveProfilePhoto();
+    return () => {
+      isMounted = false;
+    };
+  }, [user?._id, user?.role, user?.profileImage, user?.studentPhoto?.url, user?.studentPhoto?.data, user?.studentPhoto?.contentType]);
   const role = user?.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : "User";
   const roleMeta = {
     admin: {

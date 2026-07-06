@@ -2,6 +2,7 @@ const express = require("express");
 const {
   getStudentProfile,
   updateAcademicInfo,
+  updatePersonalInfo,
   updateTechnicalSkills,
   addCertification,
   updateCertification,
@@ -33,6 +34,14 @@ router.post(
   protect,
   allowRoles("student"),
   updateAcademicInfo
+);
+
+// POST /api/student/personal-info - Update personal Gmail, gender, division, career survey
+router.post(
+  "/personal-info",
+  protect,
+  allowRoles("student"),
+  updatePersonalInfo
 );
 
 // POST /api/student/technical-skills - Update technical skills
