@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { Download } from "lucide-react";
 import api from "../api";
 import { extractApiError } from "../utils/apiClient";
 import { Spinner, EmptyState } from "./ui";
@@ -6,7 +7,7 @@ import { Spinner, EmptyState } from "./ui";
 /**
  * Opportunity State analytics — per-opportunity recruitment metrics.
  */
-const OpportunityStateAnalytics = ({ user, adminDepartment, searchTerm }) => {
+const OpportunityStateAnalytics = ({ user, adminDepartment, searchTerm, onDownload, downloading }) => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -82,6 +83,15 @@ const OpportunityStateAnalytics = ({ user, adminDepartment, searchTerm }) => {
                   <span className="inline-block bg-slate-100 text-slate-700 px-2 py-0.5 rounded ml-2 capitalize">{opp.status}</span>
                 </p>
               </div>
+              <button
+                type="button"
+                onClick={() => onDownload?.(opp.opportunityId)}
+                disabled={downloading}
+                className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
+              >
+                <Download size={16} />
+                {downloading ? "Downloading..." : "Download CSV"}
+              </button>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
               <Metric label="Total Applications" value={opp.totalApplications} />

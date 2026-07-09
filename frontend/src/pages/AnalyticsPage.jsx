@@ -32,6 +32,12 @@ const AnalyticsPage = () => {
   const [yearFilter, setYearFilter] = useState("");
   const [csvDownloading, setCsvDownloading] = useState(false);
   const [csvError, setCsvError] = useState("");
+  const [studentCsvDownloading, setStudentCsvDownloading] = useState(false);
+  const [studentCsvError, setStudentCsvError] = useState("");
+  const [studentCsvSuccess, setStudentCsvSuccess] = useState("");
+  const [opportunityCsvDownloading, setOpportunityCsvDownloading] = useState(false);
+  const [opportunityCsvError, setOpportunityCsvError] = useState("");
+  const [opportunityCsvSuccess, setOpportunityCsvSuccess] = useState("");
 
   const roleLabel = user?.role === "admin" ? "Admin" : "Faculty";
 
@@ -70,9 +76,29 @@ const AnalyticsPage = () => {
     }
   }, [loadClassAnalytics, analyticsView]);
 
+  const downloadCsvBlob = (response, fallbackFilename) => {
+    const blob = new Blob([response.data], { type: "text/csv;charset=utf-8;" });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    const disposition = response.headers["content-disposition"];
+    let filename = fallbackFilename;
+    if (disposition) {
+      const match = disposition.match(/filename="?([^"]+)"?/);
+      if (match?.[1]) filename = match[1];
+    }
+    link.setAttribute("download", filename);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  };
+
   const handleDownloadParticipationCSV = async () => {
     setCsvDownloading(true);
     setCsvError("");
+    setStudentCsvSuccess("");
+    setOpportunityCsvSuccess("");
     try {
       const params = {};
       if (user?.role === "admin" && adminDepartment) {
@@ -88,25 +114,57 @@ const AnalyticsPage = () => {
         params,
         responseType: "blob",
       });
-      const blob = new Blob([response.data], { type: "text/csv;charset=utf-8;" });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      const disposition = response.headers["content-disposition"];
-      let filename = "student_participation.csv";
-      if (disposition) {
-        const match = disposition.match(/filename="?([^"]+)"?/);
-        if (match?.[1]) filename = match[1];
-      }
-      link.setAttribute("download", filename);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
+      downloadCsvBlob(response, "student_participation.csv");
     } catch (err) {
       setCsvError(extractApiError(err, "Failed to download student participation CSV"));
     } finally {
       setCsvDownloading(false);
+    }
+  };
+
+  const handleDownloadStudentAnalyticsCSV = async () => {
+    setStudentCsvDownloading(true);
+    setStudentCsvError("");
+    setStudentCsvSuccess("");
+    try {
+      const params = {};
+      if (user?.role === "admin" && adminDepartment) {
+        params.department = adminDepartment;
+      }
+      if (yearFilter) {
+        params.year = yearFilter;
+      }
+      if (debouncedSearch) {
+        params.search = debouncedSearch;
+      }
+      const response = await api.get("/student/analytics/students/download", {
+        params,
+        responseType: "blob",
+      });
+      downloadCsvBlob(response, "students.csv");
+      setStudentCsvSuccess("Student analytics CSV downloaded successfully.");
+    } catch (err) {
+      setStudentCsvError(extractApiError(err, "Failed to download student analytics CSV"));
+    } finally {
+      setStudentCsvDownloading(false);
+    }
+  };
+
+  const handleDownloadOpportunityAnalyticsCSV = async (opportunityId) => {
+    if (!opportunityId) return;
+    setOpportunityCsvDownloading(true);
+    setOpportunityCsvError("");
+    setOpportunityCsvSuccess("");
+    try {
+      const response = await api.get(`/student/analytics/opportunities/${opportunityId}/download`, {
+        responseType: "blob",
+      });
+      downloadCsvBlob(response, "opportunity.csv");
+      setOpportunityCsvSuccess("Opportunity analytics CSV downloaded successfully.");
+    } catch (err) {
+      setOpportunityCsvError(extractApiError(err, "Failed to download opportunity analytics CSV"));
+    } finally {
+      setOpportunityCsvDownloading(false);
     }
   };
 
@@ -215,18 +273,35 @@ const AnalyticsPage = () => {
                     </button>
                   ))}
                 </div>
-                <button
-                  type="button"
-                  onClick={handleDownloadParticipationCSV}
-                  disabled={csvDownloading}
-                  className="inline-flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-2 text-sm font-medium text-green-700 hover:bg-green-100 disabled:opacity-50"
-                >
-                  <Download size={16} />
-                  {csvDownloading ? "Downloading..." : "Download Student Participation CSV"}
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={handleDownloadParticipationCSV}
+                    disabled={csvDownloading}
+                    className="inline-flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-2 text-sm font-medium text-green-700 hover:bg-green-100 disabled:opacity-50"
+                  >
+                    <Download size={16} />
+                    {csvDownloading ? "Downloading..." : "Download Student Participation CSV"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDownloadStudentAnalyticsCSV}
+                    disabled={studentCsvDownloading}
+                    className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
+                  >
+                    <Download size={16} />
+                    {studentCsvDownloading ? "Downloading..." : "Download CSV"}
+                  </button>
+                </div>
               </div>
               {csvError && (
                 <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{csvError}</div>
+              )}
+              {studentCsvError && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{studentCsvError}</div>
+              )}
+              {studentCsvSuccess && (
+                <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800">{studentCsvSuccess}</div>
               )}
 
               {classLoading ? (
@@ -322,10 +397,18 @@ const AnalyticsPage = () => {
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full max-w-lg px-4 py-2.5 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-white/90"
               />
+              {opportunityCsvError && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{opportunityCsvError}</div>
+              )}
+              {opportunityCsvSuccess && (
+                <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800">{opportunityCsvSuccess}</div>
+              )}
               <OpportunityStateAnalytics
                 user={user}
                 adminDepartment={adminDepartment}
                 searchTerm={debouncedSearch}
+                onDownload={handleDownloadOpportunityAnalyticsCSV}
+                downloading={opportunityCsvDownloading}
               />
             </div>
           )}

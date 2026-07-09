@@ -4,7 +4,7 @@ const OpportunityAttendance = require("../models/OpportunityAttendance");
 const mongoose = require("mongoose");
 const { sanitizeString } = require("../utils/sanitize");
 const { isValidDepartment, isValidYear } = require("../constants/departments");
-const { buildDepartmentAudienceMatch } = require("../utils/opportunityAccess");
+const { buildDepartmentAudienceMatch, userDepartmentMatchesOpportunity } = require("../utils/opportunityAccess");
 const {
   buildAttendanceMap,
   isStudentClearedStage,
@@ -15,6 +15,10 @@ const { getEligibleStagesForStudent, hasApplied } = require("../utils/studentPro
 const {
   generateStudentParticipationCSV,
   generateStudentParticipationFilename,
+  generateStudentAnalyticsCSV,
+  generateOpportunityAnalyticsCSV,
+  generateStudentAnalyticsFilename,
+  generateOpportunityAnalyticsFilename,
 } = require("../utils/csvExport");
 
 /**
@@ -667,10 +671,231 @@ const downloadStudentParticipationCSV = async (req, res) => {
   }
 };
 
+const downloadStudentAnalyticsCSV = async (req, res) => {
+  try {
+    const { department: deptParam, year: yearParam, search: searchParam } = req.query;
+    const departmentQuery = buildStudentScopeQuery(req, deptParam);
+    const yearFilter = yearParam && isValidYear(yearParam) ? { year: yearParam } : {};
+    const searchQ = searchParam ? sanitizeString(searchParam) : "";
+    const searchFilter = searchQ
+      ? {
+          $or: [
+            { fullName: { $regex: searchQ, $options: "i" } },
+            { name: { $regex: searchQ, $options: "i" } },
+            { email: { $regex: searchQ, $options: "i" } },
+            { studentId: { $regex: searchQ, $options: "i" } },
+          ],
+        }
+      : {};
+
+    const students = await User.find({
+      role: "student",
+      ...departmentQuery,
+      ...yearFilter,
+      ...searchFilter,
+    })
+      .select("studentId name fullName email personalGmail gender division year department academicInfo technicalSkills phone")
+      .sort({ fullName: 1, name: 1 })
+      .lean();
+
+    const opportunities = await Opportunity.find({
+      status: { $in: ["active", "archived"] },
+      ...(req.user.role === "faculty"
+        ? buildDepartmentAudienceMatch(req.user.department)
+        : req.user.role === "admin" && deptParam && isValidDepartment(sanitizeString(deptParam))
+          ? buildDepartmentAudienceMatch(sanitizeString(deptParam))
+          : {}),
+    })
+      .select("_id announcementHeading applications activeStages")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const opportunityIds = opportunities.map((opp) => opp._id);
+    const allAttendance = await OpportunityAttendance.find({ opportunityId: { $in: opportunityIds } }).lean();
+    const attendanceByOpportunity = new Map();
+    for (const record of allAttendance) {
+      const oppKey = String(record.opportunityId);
+      if (!attendanceByOpportunity.has(oppKey)) attendanceByOpportunity.set(oppKey, []);
+      attendanceByOpportunity.get(oppKey).push(record);
+    }
+
+    const opportunityNames = opportunities.map((opp) => opp.announcementHeading).filter(Boolean);
+    const opportunityRows = opportunities.map((opp) => ({
+      id: opp._id,
+      name: opp.announcementHeading,
+      opportunity: opp,
+      applications: new Map((opp.applications || []).map((app) => [String(app.studentId), app.appliedAt])),
+    }));
+
+    const rows = students
+      .map((student) => {
+        const studentId = String(student.studentId || "");
+        const opportunityApplications = {};
+        const opportunityAnalytics = {};
+        let latestAppliedAt = "";
+        let aptitude = "NO";
+        let groupDiscussion = "NO";
+        let technicalInterview = "NO";
+        let hrInterview = "NO";
+        let result = "NO";
+
+        opportunityRows.forEach((opp) => {
+          const appliedAt = opp.applications.get(studentId);
+          const records = attendanceByOpportunity.get(String(opp.id)) || [];
+          const attendanceMap = buildAttendanceMap(records);
+          const stageStatuses = {};
+          const activeStages = Array.isArray(opp.opportunity?.activeStages) ? opp.opportunity.activeStages.filter(Boolean) : [];
+
+          if (appliedAt) {
+            opportunityApplications[opp.name] = "YES";
+            if (!latestAppliedAt || new Date(appliedAt) > new Date(latestAppliedAt)) {
+              latestAppliedAt = appliedAt;
+            }
+            if (isStudentClearedStage(opp.opportunity, studentId, "Aptitude Test", attendanceMap, records)) aptitude = "YES";
+            if (isStudentClearedStage(opp.opportunity, studentId, "Group Discussion", attendanceMap, records)) groupDiscussion = "YES";
+            if (isStudentClearedStage(opp.opportunity, studentId, "Technical Interview", attendanceMap, records)) technicalInterview = "YES";
+            if (isStudentClearedStage(opp.opportunity, studentId, "HR Interview", attendanceMap, records)) hrInterview = "YES";
+            if (isStudentClearedStage(opp.opportunity, studentId, "Result", attendanceMap, records)) result = "YES";
+
+            activeStages.forEach((stageName) => {
+              stageStatuses[stageName] = isStudentClearedStage(opp.opportunity, studentId, stageName, attendanceMap, records) ? "Qualified" : "Not Qualified";
+            });
+            opportunityAnalytics[opp.name] = { applied: true, stages: stageStatuses };
+          } else {
+            opportunityApplications[opp.name] = "NO";
+            activeStages.forEach((stageName) => {
+              stageStatuses[stageName] = "Not Qualified";
+            });
+            opportunityAnalytics[opp.name] = { applied: false, stages: stageStatuses };
+          }
+        });
+
+        return {
+          studentName: student.fullName || student.name || "",
+          rollNumber: student.studentId || "",
+          department: student.department || "",
+          division: student.division || "",
+          year: student.year || "",
+          instituteEmail: student.email || "",
+          personalGmail: student.personalGmail || "",
+          gender: student.gender || "",
+          sscPercentage: student.academicInfo?.sscPercentage ?? "",
+          hscPercentage: student.academicInfo?.hscPercentage ?? "",
+          cgpa: student.academicInfo?.cgpa ?? "",
+          technicalSkills: student.technicalSkills || [],
+          phoneNumber: student.phone || "",
+          appliedDate: latestAppliedAt,
+          aptitude,
+          groupDiscussion,
+          technicalInterview,
+          hrInterview,
+          result,
+          opportunityApplications,
+          opportunityAnalytics,
+        };
+      })
+      .sort((a, b) => {
+        const deptCompare = (a.department || "").localeCompare(b.department || "", "en", { sensitivity: "base" });
+        if (deptCompare !== 0) return deptCompare;
+        return (a.studentName || "").localeCompare(b.studentName || "", "en", { sensitivity: "base" });
+      });
+
+    const csvContent = generateStudentAnalyticsCSV(
+      rows,
+      opportunities.map((opp) => ({ announcementHeading: opp.announcementHeading, activeStages: opp.activeStages || [] }))
+    );
+    const filename = generateStudentAnalyticsFilename(req.user.role, deptParam || (req.user.role === "faculty" ? req.user.department : "all"));
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Cache-Control", "no-cache");
+    return res.send(csvContent);
+  } catch (error) {
+    console.error("[DOWNLOAD STUDENT ANALYTICS CSV ERROR]", error);
+    return res.status(500).json({ message: error.message || "Failed to download student analytics CSV" });
+  }
+};
+
+const downloadOpportunityAnalyticsCSV = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid opportunity ID" });
+    }
+
+    const opportunity = await Opportunity.findById(id).lean();
+    if (!opportunity) {
+      return res.status(404).json({ message: "Opportunity not found" });
+    }
+
+    if (req.user.role === "faculty" && !userDepartmentMatchesOpportunity(req.user.department, opportunity.department)) {
+      return res.status(403).json({ message: "You can only export applicants for opportunities in your department" });
+    }
+
+    const studentIds = (opportunity.applications || []).map((app) => app.studentId).filter(Boolean);
+    if (studentIds.length === 0) {
+      return res.status(200).send("");
+    }
+
+    const students = await User.find({ studentId: { $in: studentIds } })
+      .select("studentId name fullName email personalGmail gender division year department academicInfo technicalSkills phone")
+      .lean();
+
+    const attendanceRecords = await OpportunityAttendance.find({ opportunityId: opportunity._id }).lean();
+    const attendanceMap = buildAttendanceMap(attendanceRecords);
+
+    const studentMap = new Map(students.map((student) => [String(student.studentId), student]));
+    const rows = (opportunity.applications || [])
+      .map((application) => {
+        const student = studentMap.get(String(application.studentId));
+        const studentName = student?.fullName || student?.name || application.studentName || "";
+        const studentId = student?.studentId || application.studentId || "";
+        const stageStatuses = {};
+        const activeStages = Array.isArray(opportunity.activeStages) ? opportunity.activeStages.filter(Boolean) : [];
+        activeStages.forEach((stageName) => {
+          stageStatuses[stageName] = isStudentClearedStage(opportunity, studentId, stageName, attendanceMap, attendanceRecords) ? "Qualified" : "Not Qualified";
+        });
+
+        return {
+          studentName,
+          rollNumber: studentId,
+          department: student?.department || application.studentDepartment || "",
+          division: student?.division || "",
+          year: student?.year || application.studentYear || "",
+          instituteEmail: student?.email || "",
+          personalGmail: student?.personalGmail || "",
+          gender: student?.gender || "",
+          sscPercentage: student?.academicInfo?.sscPercentage ?? "",
+          hscPercentage: student?.academicInfo?.hscPercentage ?? "",
+          cgpa: student?.academicInfo?.cgpa ?? "",
+          technicalSkills: student?.technicalSkills || [],
+          phoneNumber: student?.phone || "",
+          appliedDate: application.appliedAt || "",
+          applied: true,
+          stageStatuses,
+        };
+      })
+      .sort((a, b) => (a.studentName || "").localeCompare(b.studentName || "", "en", { sensitivity: "base" }));
+
+    const csvContent = generateOpportunityAnalyticsCSV(rows, opportunity.announcementHeading || "Opportunity", opportunity);
+    const filename = generateOpportunityAnalyticsFilename(opportunity.announcementHeading || "opportunity");
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Cache-Control", "no-cache");
+    return res.send(csvContent);
+  } catch (error) {
+    console.error("[DOWNLOAD OPPORTUNITY ANALYTICS CSV ERROR]", error);
+    return res.status(500).json({ message: error.message || "Failed to download opportunity analytics CSV" });
+  }
+};
+
 module.exports = {
   getStudentAnalytics,
   getOpportunityAnalytics,
   getClassAnalytics,
   getOpportunityStateAnalytics,
   downloadStudentParticipationCSV,
+  downloadStudentAnalyticsCSV,
+  downloadOpportunityAnalyticsCSV,
 };

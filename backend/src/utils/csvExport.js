@@ -318,6 +318,254 @@ const generateStudentParticipationFilename = (department = "all") => {
   return `student_participation_${sanitizeName(department || "all")}.csv`;
 };
 
+const normalizeOpportunityHeading = (opportunity) => {
+  if (!opportunity) return "";
+  if (typeof opportunity === "string") return opportunity;
+  return opportunity.announcementHeading || opportunity.name || opportunity.title || opportunity.companyName || opportunity.displayName || "";
+};
+
+const normalizeOpportunityDefinition = (opportunity) => {
+  const heading = normalizeOpportunityHeading(opportunity);
+  const activeStages = Array.isArray(opportunity?.activeStages)
+    ? opportunity.activeStages.filter(Boolean)
+    : [];
+
+  return {
+    heading,
+    name: heading || "Opportunity",
+    activeStages,
+  };
+};
+
+const normalizeOpportunities = (opportunities = []) => {
+  if (!Array.isArray(opportunities)) return [];
+
+  return opportunities
+    .map((opportunity) => normalizeOpportunityDefinition(opportunity))
+    .filter((opportunity) => opportunity.heading);
+};
+
+const getOpportunityExportStageNames = (opportunityData, rows = []) => {
+  const normalizedOpportunity = normalizeOpportunityDefinition(opportunityData);
+  if (normalizedOpportunity.activeStages.length > 0) {
+    return normalizedOpportunity.activeStages;
+  }
+
+  const firstRow = Array.isArray(rows) ? rows.find(Boolean) : null;
+  const inferredStages = firstRow?.stageStatuses || firstRow?.stageStatusMap || {};
+  return Object.keys(inferredStages).filter(Boolean);
+};
+
+const getOpportunityExportState = (row = {}, opportunityName = "") => {
+  const opportunityAnalytics = row.opportunityAnalytics || {};
+  const analyticsForOpportunity = opportunityAnalytics[opportunityName] || opportunityAnalytics[opportunityName?.toLowerCase?.()] || null;
+
+  if (analyticsForOpportunity && typeof analyticsForOpportunity === "object") {
+    const applied = analyticsForOpportunity.applied ?? analyticsForOpportunity.isApplied ?? analyticsForOpportunity.appliedStatus ?? false;
+    const stages = analyticsForOpportunity.stages || analyticsForOpportunity.stageStatuses || {};
+    return {
+      applied: Boolean(applied),
+      stages,
+    };
+  }
+
+  const fallbackAppliedValue = row.opportunityApplications?.[opportunityName] || row.opportunityApplications?.[opportunityName?.toLowerCase?.()];
+  const applied = fallbackAppliedValue === true || fallbackAppliedValue === "YES" || fallbackAppliedValue === "Yes" || fallbackAppliedValue === "yes" || fallbackAppliedValue === "Y";
+
+  return {
+    applied,
+    stages: {},
+  };
+};
+
+const normalizeStageValue = (value) => {
+  if (value === true || value === "YES" || value === "Yes" || value === "yes" || value === "Y" || value === "Qualified" || value === "qualified" || value === "Selected" || value === "selected") {
+    return "Qualified";
+  }
+  return "Not Qualified";
+};
+
+const isPositiveExportValue = (value) => {
+  if (value === true || value === "YES" || value === "Yes" || value === "yes" || value === "Y" || value === "Qualified" || value === "qualified" || value === "Selected" || value === "selected") {
+    return true;
+  }
+  return false;
+};
+
+const getAppliedExportValue = (row = {}) => {
+  if (isPositiveExportValue(row.applied) || isPositiveExportValue(row.opportunityApplied) || isPositiveExportValue(row.isApplied) || isPositiveExportValue(row.appliedStatus)) {
+    return "YES";
+  }
+
+  if (row.appliedDate || row.appliedAt) {
+    return "YES";
+  }
+
+  const stageValues = [
+    row.aptitude,
+    row.groupDiscussion,
+    row.technicalInterview,
+    row.hrInterview,
+    row.result,
+    ...(Object.values(row.stageStatuses || {})),
+    ...(Object.values(row.stageStatusMap || {})),
+  ];
+
+  if (stageValues.some((value) => isPositiveExportValue(value))) {
+    return "YES";
+  }
+
+  return "NO";
+};
+
+const getStudentAnalyticsHeaders = (opportunities = []) => {
+  const headers = [
+    "Sr. No.",
+    "Student Name",
+    "Roll Number",
+    "Department",
+    "Division",
+    "Year",
+    "Institute Email",
+    "Personal Gmail",
+    "Gender",
+    "SSC Percentage",
+    "HSC Percentage",
+    "CGPA",
+    "Technical Skills",
+    "Phone Number",
+    "Applied Date",
+  ];
+
+  const normalizedOpportunities = normalizeOpportunities(opportunities);
+  return [
+    ...headers,
+    ...normalizedOpportunities.flatMap((opportunity) => {
+      const baseName = opportunity.name;
+      const stageNames = opportunity.activeStages.length > 0 ? opportunity.activeStages : [];
+      return [
+        `${baseName} - Applied`,
+        ...stageNames.map((stageName) => `${baseName} - ${stageName}`),
+      ];
+    }),
+  ];
+};
+
+const generateStudentAnalyticsCSV = (rows = [], opportunities = []) => {
+  const normalizedOpportunities = normalizeOpportunities(opportunities);
+  const headers = getStudentAnalyticsHeaders(normalizedOpportunities);
+  const headerRow = headers.map(escapeCSVField).join(",");
+
+  const dataRows = (rows || []).map((row, index) => {
+    const cells = [
+      escapeCSVField(index + 1),
+      escapeCSVField(row.studentName || ""),
+      escapeCSVField(row.rollNumber || ""),
+      escapeCSVField(row.department || ""),
+      escapeCSVField(row.division || ""),
+      escapeCSVField(row.year || ""),
+      escapeCSVField(row.instituteEmail || ""),
+      escapeCSVField(row.personalGmail || ""),
+      escapeCSVField(row.gender || ""),
+      escapeCSVField(row.sscPercentage ?? ""),
+      escapeCSVField(row.hscPercentage ?? ""),
+      escapeCSVField(row.cgpa ?? ""),
+      escapeCSVField(Array.isArray(row.technicalSkills) ? row.technicalSkills.join(", ") : row.technicalSkills || ""),
+      escapeCSVField(row.phoneNumber || ""),
+      escapeCSVField(formatDateTime(row.appliedDate)),
+    ];
+
+    normalizedOpportunities.forEach((opportunity) => {
+      const exportState = getOpportunityExportState(row, opportunity.name);
+      cells.push(escapeCSVField(exportState.applied ? "YES" : "NO"));
+      opportunity.activeStages.forEach((stageName) => {
+        const stageValue = exportState.stages?.[stageName];
+        cells.push(escapeCSVField(normalizeStageValue(stageValue)));
+      });
+    });
+
+    return cells.join(",");
+  });
+
+  return [headerRow, ...dataRows].join("\n");
+};
+
+const generateOpportunityAnalyticsCSV = (rows = [], opportunityName = "Opportunity", opportunityData = {}) => {
+  const opportunity = normalizeOpportunityDefinition(opportunityData || opportunityName);
+  const opportunityHeading = opportunity.name || opportunityName || "Opportunity";
+  const stageNames = getOpportunityExportStageNames(opportunityData, rows);
+  const headers = [
+    "Sr. No.",
+    "Student Name",
+    "Roll Number",
+    "Department",
+    "Division",
+    "Year",
+    "Institute Email",
+    "Personal Gmail",
+    "Gender",
+    "SSC Percentage",
+    "HSC Percentage",
+    "CGPA",
+    "Technical Skills",
+    "Phone Number",
+    "Applied Date",
+    `${opportunityHeading} - Applied`,
+    ...stageNames.map((stageName) => `${opportunityHeading} - ${stageName}`),
+  ];
+  const headerRow = headers.map(escapeCSVField).join(",");
+  const dataRows = (rows || []).map((row, index) => {
+    const cells = [
+      escapeCSVField(index + 1),
+      escapeCSVField(row.studentName || ""),
+      escapeCSVField(row.rollNumber || ""),
+      escapeCSVField(row.department || ""),
+      escapeCSVField(row.division || ""),
+      escapeCSVField(row.year || ""),
+      escapeCSVField(row.instituteEmail || ""),
+      escapeCSVField(row.personalGmail || ""),
+      escapeCSVField(row.gender || ""),
+      escapeCSVField(row.sscPercentage ?? ""),
+      escapeCSVField(row.hscPercentage ?? ""),
+      escapeCSVField(row.cgpa ?? ""),
+      escapeCSVField(Array.isArray(row.technicalSkills) ? row.technicalSkills.join(", ") : row.technicalSkills || ""),
+      escapeCSVField(row.phoneNumber || ""),
+      escapeCSVField(formatDateTime(row.appliedDate)),
+      escapeCSVField(getAppliedExportValue(row)),
+    ];
+
+    stageNames.forEach((stageName) => {
+      const stageValue = row.stageStatuses?.[stageName] || row.stageStatusMap?.[stageName] || row[stageName] || "";
+      cells.push(escapeCSVField(normalizeStageValue(stageValue)));
+    });
+
+    return cells.join(",");
+  });
+
+  return [
+    `Opportunity Analytics - ${escapeCSVField(opportunityHeading)}`,
+    headerRow,
+    ...dataRows,
+  ].join("\n");
+};
+
+const generateStudentAnalyticsFilename = (role = "admin", department = "all") => {
+  const now = new Date();
+  const dateStamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const timeStamp = `${String(now.getHours()).padStart(2, "0")}-${String(now.getMinutes()).padStart(2, "0")}`;
+  if (role === "faculty") {
+    return `Students__${dateStamp}_${timeStamp}.csv`;
+  }
+  return `Students_All_Departments_${dateStamp}_${timeStamp}.csv`;
+};
+
+const generateOpportunityAnalyticsFilename = (opportunityName = "opportunity") => {
+  const now = new Date();
+  const dateStamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const timeStamp = `${String(now.getHours()).padStart(2, "0")}-${String(now.getMinutes()).padStart(2, "0")}`;
+  return `Opportunity_${sanitizeFilenameForOS(opportunityName || "opportunity")}_${dateStamp}_${timeStamp}.csv`;
+};
+
 /**
  * Generate filename for applicants CSV
  * @param {string} opportunityName - Name of the opportunity
@@ -339,6 +587,10 @@ module.exports = {
   generateResumesZipFilename,
   generateStudentParticipationCSV,
   generateStudentParticipationFilename,
+  generateStudentAnalyticsCSV,
+  generateOpportunityAnalyticsCSV,
+  generateStudentAnalyticsFilename,
+  generateOpportunityAnalyticsFilename,
   escapeCSVField,
   formatDateTime,
 };
