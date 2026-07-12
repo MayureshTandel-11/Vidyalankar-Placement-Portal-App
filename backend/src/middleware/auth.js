@@ -108,7 +108,8 @@ const verifyRefreshToken = async (req, res, next) => {
       res.clearCookie("refreshToken", {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
-        sameSite: "strict"
+        sameSite: "lax",
+        path: "/"
       });
       return res.status(401).json({
         message: "Invalid or expired refresh token",
@@ -123,7 +124,8 @@ const verifyRefreshToken = async (req, res, next) => {
       res.clearCookie("refreshToken", {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
-        sameSite: "strict"
+        sameSite: "lax",
+        path: "/"
       });
       return res.status(401).json({
         message: "User not found",

@@ -418,76 +418,197 @@ const getAppliedExportValue = (row = {}) => {
   return "NO";
 };
 
-const getStudentAnalyticsHeaders = (opportunities = []) => {
-  const headers = [
-    "Sr. No.",
-    "Student Name",
-    "Roll Number",
-    "Department",
-    "Division",
-    "Year",
-    "Institute Email",
-    "Personal Gmail",
-    "Gender",
-    "SSC Percentage",
-    "HSC Percentage",
-    "CGPA",
-    "Technical Skills",
-    "Phone Number",
-    "Applied Date",
-  ];
+/** Fixed student identity columns matching the analytics spreadsheet template */
+const STUDENT_ANALYTICS_BASE_HEADERS = [
+  "Sr. No.",
+  "Student Name",
+  "Roll Number",
+  "Department",
+  "Division",
+  "Year",
+  "Institute Email",
+  "Personal Gmail",
+  "Gender",
+  "SSC Percentage",
+  "HSC Percentage",
+  "CGPA",
+  "Technical Skills",
+  "Phone Number",
+];
 
+/**
+ * Fixed per-opportunity stage columns (Row 2 under the opportunity title).
+ * Matches the Admin/Faculty Student State download template exactly.
+ */
+const STUDENT_ANALYTICS_STAGE_HEADERS = [
+  "Applied",
+  "Aptitude Test",
+  "Group Discussion",
+  "Technical Interview",
+  "HR Interview",
+  "Result",
+];
+
+const escapeXml = (value) =>
+  String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+
+const buildSpreadsheetCell = (value, { type = "String", style = "wrap" } = {}) => {
+  const safe = escapeXml(value);
+  if (safe === "") {
+    return `<Cell ss:StyleID="${style}"/>`;
+  }
+  return `<Cell ss:StyleID="${style}"><Data ss:Type="${type}">${safe}</Data></Cell>`;
+};
+
+const buildMergedSpreadsheetCell = (value, mergeAcross, { style = "headerOpportunity" } = {}) => {
+  const safe = escapeXml(value);
+  const mergeAttr = mergeAcross > 0 ? ` ss:MergeAcross="${mergeAcross}"` : "";
+  if (safe === "") {
+    return `<Cell ss:StyleID="${style}"${mergeAttr}/>`;
+  }
+  return `<Cell ss:StyleID="${style}"${mergeAttr}><Data ss:Type="String">${safe}</Data></Cell>`;
+};
+
+const getStudentAnalyticsHeaders = (opportunities = []) => {
   const normalizedOpportunities = normalizeOpportunities(opportunities);
   return [
-    ...headers,
-    ...normalizedOpportunities.flatMap((opportunity) => {
-      const baseName = opportunity.name;
-      const stageNames = opportunity.activeStages.length > 0 ? opportunity.activeStages : [];
-      return [
-        `${baseName} - Applied`,
-        ...stageNames.map((stageName) => `${baseName} - ${stageName}`),
-      ];
-    }),
+    ...STUDENT_ANALYTICS_BASE_HEADERS,
+    ...normalizedOpportunities.flatMap((opportunity) =>
+      STUDENT_ANALYTICS_STAGE_HEADERS.map((stageName) =>
+        stageName === "Applied" ? `${opportunity.name} - Applied` : `${opportunity.name} - ${stageName}`
+      )
+    ),
   ];
 };
 
+/**
+ * Student State analytics export — Excel SpreadsheetML (.xls)
+ * Structure matches the placement tracker template:
+ *  Row 1: student field titles + opportunity name spanning stage columns
+ *  Row 2: blank under student fields + Applied / Aptitude / GD / Technical / HR / Result
+ * Formatting: bold headers, center align, wrap text, vertical merge on student headers,
+ * horizontal merge on each opportunity title.
+ */
 const generateStudentAnalyticsCSV = (rows = [], opportunities = []) => {
   const normalizedOpportunities = normalizeOpportunities(opportunities);
-  const headers = getStudentAnalyticsHeaders(normalizedOpportunities);
-  const headerRow = headers.map(escapeCSVField).join(",");
+  const baseColCount = STUDENT_ANALYTICS_BASE_HEADERS.length;
+  const stageColCount = STUDENT_ANALYTICS_STAGE_HEADERS.length;
+  const totalCols = baseColCount + normalizedOpportunities.length * stageColCount;
 
-  const dataRows = (rows || []).map((row, index) => {
-    const cells = [
-      escapeCSVField(index + 1),
-      escapeCSVField(row.studentName || ""),
-      escapeCSVField(row.rollNumber || ""),
-      escapeCSVField(row.department || ""),
-      escapeCSVField(row.division || ""),
-      escapeCSVField(row.year || ""),
-      escapeCSVField(row.instituteEmail || ""),
-      escapeCSVField(row.personalGmail || ""),
-      escapeCSVField(row.gender || ""),
-      escapeCSVField(row.sscPercentage ?? ""),
-      escapeCSVField(row.hscPercentage ?? ""),
-      escapeCSVField(row.cgpa ?? ""),
-      escapeCSVField(Array.isArray(row.technicalSkills) ? row.technicalSkills.join(", ") : row.technicalSkills || ""),
-      escapeCSVField(row.phoneNumber || ""),
-      escapeCSVField(formatDateTime(row.appliedDate)),
-    ];
+  const columnXml = Array.from({ length: Math.max(totalCols, 1) }, (_, index) => {
+    // Wider wrap-friendly widths for skills + stage status columns
+    const width = index < baseColCount ? (index === 12 ? 28 : index === 1 || index === 6 || index === 7 ? 22 : 14) : 16;
+    return `<Column ss:AutoFitWidth="0" ss:Width="${width}"/>`;
+  }).join("");
 
-    normalizedOpportunities.forEach((opportunity) => {
-      const exportState = getOpportunityExportState(row, opportunity.name);
-      cells.push(escapeCSVField(exportState.applied ? "YES" : "NO"));
-      opportunity.activeStages.forEach((stageName) => {
-        const stageValue = exportState.stages?.[stageName];
-        cells.push(escapeCSVField(normalizeStageValue(stageValue)));
-      });
-    });
+  // Row 1: student headers (vertically merged with row 2) + opportunity titles (horizontally merged)
+  const headerRow1Cells = [
+    ...STUDENT_ANALYTICS_BASE_HEADERS.map((header) =>
+      `<Cell ss:StyleID="headerBase" ss:MergeDown="1"><Data ss:Type="String">${escapeXml(header)}</Data></Cell>`
+    ),
+    ...normalizedOpportunities.flatMap((opportunity) => [
+      buildMergedSpreadsheetCell(opportunity.name, stageColCount - 1, { style: "headerOpportunity" }),
+    ]),
+  ].join("");
 
-    return cells.join(",");
-  });
+  // Row 2: skip vertically-merged student columns, then stage sub-headers per opportunity
+  let headerRow2Cells = "";
+  if (normalizedOpportunities.length > 0) {
+    const stageHeaderCellsForOneOpportunity = (isFirstBlock) =>
+      STUDENT_ANALYTICS_STAGE_HEADERS.map((stageName, stageIndex) => {
+        const indexAttr =
+          isFirstBlock && stageIndex === 0 ? ` ss:Index="${baseColCount + 1}"` : "";
+        return `<Cell${indexAttr} ss:StyleID="headerStage"><Data ss:Type="String">${escapeXml(stageName)}</Data></Cell>`;
+      }).join("");
 
-  return [headerRow, ...dataRows].join("\n");
+    headerRow2Cells = normalizedOpportunities
+      .map((_, oppIndex) => stageHeaderCellsForOneOpportunity(oppIndex === 0))
+      .join("");
+  }
+
+  const dataRowsXml = (rows || []).map((row, index) => {
+    const baseCells = [
+      buildSpreadsheetCell(index + 1, { type: "Number", style: "wrapCenter" }),
+      buildSpreadsheetCell(row.studentName || "", { style: "wrap" }),
+      buildSpreadsheetCell(row.rollNumber || "", { style: "wrapCenter" }),
+      buildSpreadsheetCell(row.department || "", { style: "wrapCenter" }),
+      buildSpreadsheetCell(row.division || "", { style: "wrapCenter" }),
+      buildSpreadsheetCell(row.year || "", { style: "wrapCenter" }),
+      buildSpreadsheetCell(row.instituteEmail || "", { style: "wrap" }),
+      buildSpreadsheetCell(row.personalGmail || "", { style: "wrap" }),
+      buildSpreadsheetCell(row.gender || "", { style: "wrapCenter" }),
+      buildSpreadsheetCell(row.sscPercentage ?? "", { style: "wrapCenter" }),
+      buildSpreadsheetCell(row.hscPercentage ?? "", { style: "wrapCenter" }),
+      buildSpreadsheetCell(row.cgpa ?? "", { style: "wrapCenter" }),
+      buildSpreadsheetCell(
+        Array.isArray(row.technicalSkills) ? row.technicalSkills.join(", ") : row.technicalSkills || "",
+        { style: "wrap" }
+      ),
+      buildSpreadsheetCell(row.phoneNumber || "", { style: "wrapCenter" }),
+    ].join("");
+
+    const opportunityCells = normalizedOpportunities
+      .map((opportunity) => {
+        const exportState = getOpportunityExportState(row, opportunity.name);
+        const appliedLabel = exportState.applied ? "Yes" : "No";
+        const stageCells = STUDENT_ANALYTICS_STAGE_HEADERS.map((stageName) => {
+          if (stageName === "Applied") {
+            return buildSpreadsheetCell(appliedLabel, { style: "wrapCenter" });
+          }
+          const stageValue = exportState.stages?.[stageName];
+          return buildSpreadsheetCell(normalizeStageValue(stageValue), { style: "wrapCenter" });
+        });
+        return stageCells.join("");
+      })
+      .join("");
+
+    return `<Row ss:AutoFitHeight="1">${baseCells}${opportunityCells}</Row>`;
+  }).join("");
+
+  return `<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:html="http://www.w3.org/TR/REC-html40">
+ <Styles>
+  <Style ss:ID="Default" ss:Name="Normal">
+   <Alignment ss:Vertical="Center" ss:WrapText="1"/>
+   <Font ss:FontName="Calibri" ss:Size="11"/>
+  </Style>
+  <Style ss:ID="wrap">
+   <Alignment ss:Horizontal="Left" ss:Vertical="Center" ss:WrapText="1"/>
+  </Style>
+  <Style ss:ID="wrapCenter">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/>
+  </Style>
+  <Style ss:ID="headerBase">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/>
+   <Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1"/>
+  </Style>
+  <Style ss:ID="headerOpportunity">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/>
+   <Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1"/>
+  </Style>
+  <Style ss:ID="headerStage">
+   <Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/>
+   <Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1"/>
+  </Style>
+ </Styles>
+ <Worksheet ss:Name="Student State">
+  <Table>
+   ${columnXml}
+   <Row ss:AutoFitHeight="1" ss:Height="30">${headerRow1Cells}</Row>
+   <Row ss:AutoFitHeight="1" ss:Height="30">${headerRow2Cells}</Row>
+   ${dataRowsXml}
+  </Table>
+ </Worksheet>
+</Workbook>`;
 };
 
 const generateOpportunityAnalyticsCSV = (rows = [], opportunityName = "Opportunity", opportunityData = {}) => {
@@ -553,10 +674,11 @@ const generateStudentAnalyticsFilename = (role = "admin", department = "all") =>
   const now = new Date();
   const dateStamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const timeStamp = `${String(now.getHours()).padStart(2, "0")}-${String(now.getMinutes()).padStart(2, "0")}`;
+  // SpreadsheetML workbook — opens in Excel with merges + wrap matching the tracker template
   if (role === "faculty") {
-    return `Students__${dateStamp}_${timeStamp}.csv`;
+    return `Students__${dateStamp}_${timeStamp}.xls`;
   }
-  return `Students_All_Departments_${dateStamp}_${timeStamp}.csv`;
+  return `Students_All_Departments_${dateStamp}_${timeStamp}.xls`;
 };
 
 const generateOpportunityAnalyticsFilename = (opportunityName = "opportunity") => {

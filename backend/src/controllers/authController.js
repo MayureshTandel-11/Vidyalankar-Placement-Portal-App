@@ -38,21 +38,31 @@ const canRequestOtp = (studentId) => {
 };
 
 /**
- * Issue access token (15m expiry)
- * For use in Authorization: Bearer header
+ * Issue access token (short-lived)
+ * Payload includes id + role (+ email when available) for sockets / lightweight auth checks
  */
-const issueAccessToken = (userId) => {
+const issueAccessToken = (user) => {
   if (!process.env.JWT_SECRET) {
     throw new Error("JWT_SECRET not configured");
   }
-  return jwt.sign({ id: userId }, process.env.JWT_SECRET, {
+  const id = user?._id || user?.id || user;
+  if (!id) {
+    throw new Error("Cannot issue access token without user id");
+  }
+  const payload = { id };
+  if (user && typeof user === "object") {
+    if (user.role) payload.role = user.role;
+    const email = user.email || user.userEmail;
+    if (email) payload.email = email;
+  }
+  return jwt.sign(payload, process.env.JWT_SECRET, {
     expiresIn: ACCESS_TOKEN_EXPIRY
   });
 };
 
 /**
  * Issue refresh token (7d expiry)
- * For use in httpOnly, sameSite=strict, secure cookie
+ * For use in httpOnly, sameSite=lax, secure cookie
  */
 const issueRefreshToken = (userId) => {
   if (!process.env.JWT_SECRET) {
@@ -100,10 +110,11 @@ const setRefreshTokenCookie = (res, refreshToken) => {
  * Clear refresh token cookie
  */
 const clearRefreshTokenCookie = (res) => {
+  // Must match setRefreshTokenCookie attributes or the browser won't clear it
   res.clearCookie("refreshToken", {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
+    sameSite: "lax",
     path: "/"
   });
 };
@@ -341,7 +352,7 @@ const verifyOtp = async (req, res) => {
     await Otp.deleteOne({ _id: otpDoc._id });
 
     // Issue tokens
-    const accessToken = issueAccessToken(user._id);
+    const accessToken = issueAccessToken(user);
     const refreshToken = issueRefreshToken(user._id);
 
     // Set refresh token in secure httpOnly cookie
@@ -480,7 +491,7 @@ const login = async (req, res) => {
       // Generate tokens
       let accessToken, refreshToken;
       try {
-        accessToken = issueAccessToken(student._id);
+        accessToken = issueAccessToken(student);
         refreshToken = issueRefreshToken(student._id);
         setRefreshTokenCookie(res, refreshToken);
         console.log("[AUTH] ✓ Tokens issued for student:", student.studentId);
@@ -556,7 +567,7 @@ const login = async (req, res) => {
     // Generate tokens
     let accessToken, refreshToken;
     try {
-      accessToken = issueAccessToken(user._id);
+      accessToken = issueAccessToken(user);
       refreshToken = issueRefreshToken(user._id);
       setRefreshTokenCookie(res, refreshToken);
       console.log("[AUTH] ✓ Tokens issued for", user.role + ":", email);
@@ -605,7 +616,7 @@ const refreshAccessToken = async (req, res) => {
     }
 
     // Issue new access token
-    const accessToken = issueAccessToken(user._id);
+    const accessToken = issueAccessToken(user);
 
     console.log(`[AUTH] ✓ Access token refreshed for user: ${user.email}`);
 
@@ -626,11 +637,8 @@ const refreshAccessToken = async (req, res) => {
  */
 const logout = async (req, res) => {
   try {
-    // Clear refresh token cookie
     clearRefreshTokenCookie(res);
-
-    console.log(`[AUTH] ✓ User logged out: ${req.user?.email || "unknown"}`);
-
+    console.log("[AUTH] ✓ User logged out (refresh cookie cleared)");
     return ok(res, {
       message: "Logged out successfully"
     });

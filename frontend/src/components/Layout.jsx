@@ -60,11 +60,10 @@ const Layout = ({ children, role = "Student" }) => {
   const navigate = useNavigate();
   const [showMenu, setShowMenu] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
-  const [showNotifications, setShowNotifications] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     navigate("/login");
   };
 
@@ -88,14 +87,15 @@ const Layout = ({ children, role = "Student" }) => {
           </div>
 
           <div className="relative flex items-center gap-2 flex-shrink-0">
-            {/* <button
-              onClick={() => setShowNotifications((current) => !current)}
-              className="h-9 w-9 flex items-center justify-center relative rounded-md border border-slate-200 bg-white/85 text-slate-700 transition hover:border-red-300 hover:text-red-600 flex-shrink-0"
-              aria-label="Toggle notifications"
-            >
-              <Bell size={18} />
-              <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.75)]" />
-            </button> */}
+            {user?.role === "student" ? (
+              <Link
+                to="/notifications"
+                className="h-9 w-9 flex items-center justify-center relative rounded-md border border-slate-200 bg-white/85 text-slate-700 transition hover:border-red-300 hover:text-red-600 flex-shrink-0"
+                aria-label="Open notifications"
+              >
+                <Bell size={18} />
+              </Link>
+            ) : null}
             <button
               onClick={() => setShowProfile((current) => !current)}
               className="h-9 px-2 flex items-center gap-1.5 rounded-md border border-slate-200 bg-white/85 text-slate-700 transition hover:border-red-300 hover:text-red-600 flex-shrink-0"
@@ -108,31 +108,6 @@ const Layout = ({ children, role = "Student" }) => {
               )}
               <span className="hidden xs:inline text-xs sm:text-sm truncate max-w-[60px] sm:max-w-none">{user?.name?.split(" ")[0] || "Profile"}</span>
             </button>
-
-            <AnimatePresence>
-              {showNotifications ? (
-                <Motion.div
-                  initial={{ opacity: 0, y: -8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  className="glass-panel absolute right-0 xs:right-12 sm:right-16 top-full mt-2 w-full xs:w-60 sm:w-72 p-4 text-sm z-50 mx-2 xs:mx-0 rounded-lg border border-slate-200/50"
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <p className="font-semibold text-slate-900">Notifications</p>
-                    <button
-                      onClick={() => setShowNotifications(false)}
-                      className="text-slate-400 hover:text-slate-600 transition"
-                      aria-label="Close notifications"
-                    >
-                      <X size={16} />
-                    </button>
-                  </div>
-                  <div className="rounded-lg border border-slate-200 bg-gradient-to-br from-slate-50 to-slate-100 px-4 py-3 text-center">
-                    <p className="text-xs xs:text-sm text-slate-600">🔔 No new notifications</p>
-                  </div>
-                </Motion.div>
-              ) : null}
-            </AnimatePresence>
 
             <AnimatePresence>
               {showProfile ? (

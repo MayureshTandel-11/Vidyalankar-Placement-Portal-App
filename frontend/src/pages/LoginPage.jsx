@@ -11,7 +11,7 @@ import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 
 const LoginPage = () => {
-  const [form, setForm] = useState({ role: "student", identifier: "", password: "" });
+  const [form, setForm] = useState({ role: "student", identifier: "", email: "", password: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();

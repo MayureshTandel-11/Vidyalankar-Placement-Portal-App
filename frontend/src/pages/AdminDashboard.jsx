@@ -61,7 +61,7 @@ const AdminDashboard = () => {
   }, [load]);
 
   const handleEdit = (opportunity) => {
-    navigate(`/admin/opportunities?edit=${opportunity._id}`);
+    navigate(`/opportunities?edit=${opportunity._id}`);
   };
 
   const handleDelete = (opportunity) => {

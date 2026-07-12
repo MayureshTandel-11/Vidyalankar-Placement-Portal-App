@@ -32,8 +32,8 @@ router.post("/login", authLimiter, validateLogin, login);
 // Refresh token route (get new access token)
 router.post("/refresh", verifyRefreshToken, refreshAccessToken);
 
-// Logout route (clear refresh token cookie)
-router.post("/logout", protect, logout);
+// Logout route (clear refresh token cookie; cookie-only — works even if access token expired)
+router.post("/logout", logout);
 
 // Password management routes
 router.post("/change-password", protect, validateChangePassword, changePassword);

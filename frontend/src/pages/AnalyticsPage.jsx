@@ -77,7 +77,8 @@ const AnalyticsPage = () => {
   }, [loadClassAnalytics, analyticsView]);
 
   const downloadCsvBlob = (response, fallbackFilename) => {
-    const blob = new Blob([response.data], { type: "text/csv;charset=utf-8;" });
+    const contentType = response.headers?.["content-type"] || "text/csv;charset=utf-8;";
+    const blob = new Blob([response.data], { type: contentType });
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -141,8 +142,8 @@ const AnalyticsPage = () => {
         params,
         responseType: "blob",
       });
-      downloadCsvBlob(response, "students.csv");
-      setStudentCsvSuccess("Student analytics CSV downloaded successfully.");
+      downloadCsvBlob(response, "students.xls");
+      setStudentCsvSuccess("Student analytics spreadsheet downloaded successfully.");
     } catch (err) {
       setStudentCsvError(extractApiError(err, "Failed to download student analytics CSV"));
     } finally {

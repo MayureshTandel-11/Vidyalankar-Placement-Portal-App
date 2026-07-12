@@ -5,7 +5,7 @@ const {
   generateOpportunityAnalyticsCSV,
 } = require('../src/utils/csvExport');
 
-test('generateStudentAnalyticsCSV includes dynamic opportunity columns and escapes values', () => {
+test('generateStudentAnalyticsCSV uses two-row template with opportunity merge and stage sub-headers', () => {
   const rows = [
     {
       studentName: 'Rahul, Rao',
@@ -21,24 +21,59 @@ test('generateStudentAnalyticsCSV includes dynamic opportunity columns and escap
       cgpa: 9.1,
       technicalSkills: ['Java', 'Node.js'],
       phoneNumber: '9876543210',
-      appliedDate: '2026-01-15T10:00:00.000Z',
-      aptitude: 'YES',
-      groupDiscussion: 'NO',
-      technicalInterview: 'NO',
-      hrInterview: 'NO',
-      result: 'NO',
       opportunityApplications: { Google: 'YES', Amazon: 'NO' },
+      opportunityAnalytics: {
+        Google: {
+          applied: true,
+          stages: {
+            'Aptitude Test': 'Qualified',
+            'Group Discussion': 'Not Qualified',
+            'Technical Interview': 'Not Qualified',
+            'HR Interview': 'Not Qualified',
+            Result: 'Not Qualified',
+          },
+        },
+        Amazon: {
+          applied: false,
+          stages: {
+            'Aptitude Test': 'Not Qualified',
+            'Group Discussion': 'Not Qualified',
+            'Technical Interview': 'Not Qualified',
+            'HR Interview': 'Not Qualified',
+            Result: 'Not Qualified',
+          },
+        },
+      },
     },
   ];
 
-  const csv = generateStudentAnalyticsCSV(rows, ['Google', 'Amazon']);
+  const csv = generateStudentAnalyticsCSV(rows, [
+    { announcementHeading: 'Google', activeStages: ['Aptitude Test', 'Group Discussion', 'Technical Interview', 'HR Interview', 'Result'] },
+    { announcementHeading: 'Amazon', activeStages: ['Aptitude Test', 'Group Discussion', 'Technical Interview', 'HR Interview', 'Result'] },
+  ]);
 
+  assert.match(csv, /Workbook/);
+  assert.match(csv, /Sr\. No\./);
   assert.match(csv, /Student Name/);
-  assert.match(csv, /Google/);
-  assert.match(csv, /Amazon/);
+  assert.match(csv, /Phone Number/);
+  assert.match(csv, /ss:MergeDown="1"/);
+  assert.match(csv, /ss:MergeAcross="5"/);
+  assert.match(csv, />Google</);
+  assert.match(csv, />Amazon</);
+  assert.match(csv, />Applied</);
+  assert.match(csv, />Aptitude Test</);
+  assert.match(csv, />Group Discussion</);
+  assert.match(csv, />Technical Interview</);
+  assert.match(csv, />HR Interview</);
+  assert.match(csv, />Result</);
   assert.match(csv, /Rahul, Rao/);
-  assert.match(csv, /Java, Node.js/);
-  assert.match(csv, /YES/);
+  assert.match(csv, /Java, Node\.js/);
+  assert.match(csv, />Yes</);
+  assert.match(csv, />No</);
+  assert.match(csv, /Qualified/);
+  assert.match(csv, /Not Qualified/);
+  assert.match(csv, /ss:WrapText="1"/);
+  assert.doesNotMatch(csv, /Applied Date/);
 });
 
 test('generateOpportunityAnalyticsCSV uses YES/NO round status values', () => {
@@ -81,7 +116,7 @@ test('generateOpportunityAnalyticsCSV uses YES/NO round status values', () => {
   assert.match(csv, /Not Qualified/);
 });
 
-test('generateStudentAnalyticsCSV builds dynamic opportunity-stage columns from announcement headings', () => {
+test('generateStudentAnalyticsCSV always emits fixed stage columns per opportunity', () => {
   const rows = [
     {
       studentName: 'Rahul Rao',
@@ -97,7 +132,6 @@ test('generateStudentAnalyticsCSV builds dynamic opportunity-stage columns from 
       cgpa: 9.1,
       technicalSkills: ['Java', 'Node.js'],
       phoneNumber: '9876543210',
-      appliedDate: '2026-01-15T10:00:00.000Z',
       opportunityAnalytics: {
         'Google Summer Internship 2027': {
           applied: true,
@@ -116,10 +150,14 @@ test('generateStudentAnalyticsCSV builds dynamic opportunity-stage columns from 
 
   const csv = generateStudentAnalyticsCSV(rows, opportunities);
 
-  assert.match(csv, /Google Summer Internship 2027 - Applied/);
-  assert.match(csv, /Google Summer Internship 2027 - Aptitude Test/);
-  assert.match(csv, /Google Summer Internship 2027 - Technical Interview/);
-  assert.match(csv, /YES/);
+  assert.match(csv, /Google Summer Internship 2027/);
+  assert.match(csv, />Applied</);
+  assert.match(csv, />Aptitude Test</);
+  assert.match(csv, />Group Discussion</);
+  assert.match(csv, />Technical Interview</);
+  assert.match(csv, />HR Interview</);
+  assert.match(csv, />Result</);
+  assert.match(csv, />Yes</);
   assert.match(csv, /Qualified/);
   assert.match(csv, /Not Qualified/);
 });

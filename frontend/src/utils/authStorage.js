@@ -25,17 +25,20 @@ export const sanitizeUserForStorage = (user) => {
   return safeUser;
 };
 
+/**
+ * Persist only non-sensitive auth info.
+ * Access tokens must never be written to localStorage.
+ */
 export const sanitizeAuthStateForStorage = (authState) => {
   if (!authState || typeof authState !== "object" || Array.isArray(authState)) {
     return authState;
   }
 
   if (!authState.user || typeof authState.user !== "object" || Array.isArray(authState.user)) {
-    return authState;
+    return { user: null };
   }
 
   return {
-    ...authState,
     user: sanitizeUserForStorage(authState.user),
   };
 };

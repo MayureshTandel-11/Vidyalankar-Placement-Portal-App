@@ -338,12 +338,11 @@ const PromotionsPage = () => {
           ) : students.length === 0 ? (
             <EmptyState
               title="No Eligible Students"
-              description={
+              subtitle={
                 selectedYear || searchTerm || selectedDepartment
                   ? "No students found matching the filters. Try adjusting your search criteria."
                   : "No students are eligible for promotion at the moment. Eligible students must be in First Year or Second Year."
               }
-              icon={TrendingUp}
             />
           ) : (
             <>

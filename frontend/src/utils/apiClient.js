@@ -56,7 +56,14 @@ const api = axios.create({
 api.interceptors.request.use(
   (config) => {
     // Public auth routes - do NOT add authorization header
-    const publicRoutes = ["/auth/login", "/auth/register", "/auth/verify-otp", "/auth/forgot-password"];
+    const publicRoutes = [
+      "/auth/login",
+      "/auth/register",
+      "/auth/verify-otp",
+      "/auth/forgot-password",
+      "/auth/refresh",
+      "/auth/logout",
+    ];
     const isPublicRoute = publicRoutes.some(route => config.url?.includes(route));
 
     if (isPublicRoute) {
@@ -248,6 +255,24 @@ export const clearAccessToken = () => {
   if (process.env.NODE_ENV === "development") {
     console.log("[AUTH] Access token cleared from memory");
   }
+};
+
+/**
+ * Restore access token using the httpOnly refresh cookie.
+ * Used on app load — does not require an existing access token.
+ */
+export const refreshSession = async () => {
+  const response = await api.post("/auth/refresh");
+  const payload = response.data?.data ?? response.data;
+  const newAccessToken = payload?.accessToken;
+  if (!newAccessToken) {
+    throw new Error("No access token in refresh response");
+  }
+  accessToken = newAccessToken;
+  return {
+    accessToken: newAccessToken,
+    user: payload?.user || null,
+  };
 };
 
 /**

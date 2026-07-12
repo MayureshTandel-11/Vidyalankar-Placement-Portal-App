@@ -23,7 +23,7 @@ const resultRoutes = require("./routes/resultRoutes");
 const promotionRoutes = require("./routes/promotionRoutes");
 const departmentChangeRoutes = require("./routes/departmentChangeRoutes");
 const { sanitizeRequest } = require("./middleware/sanitizeMiddleware");
-const { seedAdminUser, DEFAULT_ADMIN } = require("./utils/seedAdmin");
+const { seedAdminUser } = require("./utils/seedAdmin");
 const { setIO } = require("./utils/io");
 const { globalLimiter } = require("./middleware/rateLimiter");
 const { globalErrorHandler, notFoundHandler } = require("./middleware/errorHandler");
@@ -182,7 +182,7 @@ const socketAuthMiddleware = (socket, next) => {
 
     // Attach user information to socket for use in event handlers
     socket.userId = decoded.id;
-    socket.userRole = decoded.role || "student"; // Default role if not in token
+    socket.userRole = decoded.role || "student";
     socket.userEmail = decoded.email || "unknown";
 
     if (process.env.NODE_ENV === "development") {
@@ -312,8 +312,10 @@ const startServer = async () => {
     const adminSeedResult = await seedAdminUser();
     if (adminSeedResult.created) {
       console.log(
-        `[ADMIN SEED] Admin created: email=${DEFAULT_ADMIN.email} password=${DEFAULT_ADMIN.password}`
+        `[ADMIN SEED] Admin created: email=${adminSeedResult.email}. Change the bootstrap password immediately.`
       );
+    } else if (adminSeedResult.skipped) {
+      console.warn(`[ADMIN SEED] Skipped: ${adminSeedResult.reason}`);
     } else {
       console.log(`[ADMIN SEED] Admin already present: email=${adminSeedResult.email}`);
     }

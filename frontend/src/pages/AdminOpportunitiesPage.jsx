@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import api, { extractApiData, extractApiError } from "../api";
 import Layout from "../components/Layout";
@@ -29,6 +30,7 @@ const AdminOpportunitiesPage = () => {
   const [error, setError] = useState("");
   const [editingId, setEditingId] = useState(null);
   const [deletingId, setDeletingId] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const load = async () => {
     setLoading(true);
@@ -46,9 +48,56 @@ const AdminOpportunitiesPage = () => {
     load();
   }, []);
 
+  useEffect(() => {
+    const editId = searchParams.get("edit");
+    if (!editId) return;
+
+    const prefillFromId = async () => {
+      try {
+        toast("Editing opportunity...");
+        const response = await api.get(`/opportunities/${editId}`);
+        const item = extractApiData(response);
+        if (!item) {
+          throw new Error("Opportunity not found");
+        }
+        if (item.status === "archived") {
+          setError("Cannot edit archived opportunities");
+          toast.error("Cannot edit archived opportunities");
+          setSearchParams({});
+          return;
+        }
+        setForm({
+          announcementHeading: item.announcementHeading || "",
+          type: item.type || "Internship",
+          description: item.description || "",
+          eligibilityCriteria: item.eligibilityCriteria
+            ? item.eligibilityCriteria.split(", ").filter(Boolean)
+            : [],
+          lastDate: item.lastDate ? new Date(item.lastDate).toISOString().split("T")[0] : "",
+          department: item.department || OPPORTUNITY_BROADCAST_ALL,
+          technicalSkills: Array.isArray(item.technicalSkills) ? item.technicalSkills : [],
+          applicationLink: item.applicationLink || "",
+          eligibleGenders:
+            Array.isArray(item.eligibleGenders) && item.eligibleGenders.length > 0
+              ? item.eligibleGenders
+              : [...GENDER_OPTIONS],
+        });
+        setEditingId(item._id);
+      } catch (err) {
+        const message = extractApiError(err, "Failed to load opportunity for editing");
+        setError(message);
+        toast.error(message);
+        setSearchParams({});
+      }
+    };
+
+    prefillFromId();
+  }, [searchParams, setSearchParams]);
+
   const resetForm = () => {
     setForm(initial);
     setEditingId(null);
+    setSearchParams({});
   };
 
   const createOpportunity = async () => {
@@ -103,20 +152,7 @@ const AdminOpportunitiesPage = () => {
 
   const handleEdit = (item) => {
     const id = item._id;
-    setForm({
-      announcementHeading: item.announcementHeading || "",
-      type: item.type || "Internship",
-      description: item.description || "",
-      eligibilityCriteria: item.eligibilityCriteria ? item.eligibilityCriteria.split(", ").filter(Boolean) : [],
-      lastDate: item.lastDate ? new Date(item.lastDate).toISOString().split("T")[0] : "",
-      department: item.department || OPPORTUNITY_BROADCAST_ALL,
-      technicalSkills: Array.isArray(item.technicalSkills) ? item.technicalSkills : [],
-      applicationLink: item.applicationLink || "",
-      eligibleGenders: Array.isArray(item.eligibleGenders) && item.eligibleGenders.length > 0
-        ? item.eligibleGenders
-        : [...GENDER_OPTIONS],
-    });
-    setEditingId(id);
+    setSearchParams({ edit: id });
   };
 
   const handleSaveEdit = async () => {

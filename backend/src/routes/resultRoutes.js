@@ -13,6 +13,12 @@ const { allowRoles } = require("../middleware/roleMiddleware");
 
 const router = express.Router();
 
+/**
+ * Results API — Result tab status (Selected / HR Cleared / Placed) + offer upload/download.
+ * Offer files are stored in the shared OfferLetter collection (same as /api/offerLetters).
+ * Attendance "Result" stage UI uses /api/offerLetters; both paths are intentional and compatible.
+ */
+
 // Configure multer for offer letter uploads (PDF only)
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {

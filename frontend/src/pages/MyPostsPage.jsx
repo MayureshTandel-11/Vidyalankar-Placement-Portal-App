@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import Layout from "../components/Layout";
 import Footer from "../components/Footer";
@@ -23,11 +23,11 @@ const isArchived = (item) => {
 
 const MyPostsPage = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [opportunities, setOpportunities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState("");
   const [error, setError] = useState("");
-  const [searchParams, setSearchParams] = useSearchParams();
 
   const loadOpportunities = useCallback(async () => {
     setLoading(true);
@@ -103,7 +103,7 @@ const MyPostsPage = () => {
       toast.error("Cannot edit archived opportunities");
       return;
     }
-    setSearchParams({ edit: id });
+    navigate(`/post-opportunity?edit=${id}`);
   };
 
   const handleDelete = (item) => {

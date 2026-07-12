@@ -806,7 +806,8 @@ const downloadStudentAnalyticsCSV = async (req, res) => {
     );
     const filename = generateStudentAnalyticsFilename(req.user.role, deptParam || (req.user.role === "faculty" ? req.user.department : "all"));
 
-    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    // SpreadsheetML (.xls) so Excel preserves merged headers + wrap text like the tracker template
+    res.setHeader("Content-Type", "application/vnd.ms-excel; charset=utf-8");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     res.setHeader("Cache-Control", "no-cache");
     return res.send(csvContent);

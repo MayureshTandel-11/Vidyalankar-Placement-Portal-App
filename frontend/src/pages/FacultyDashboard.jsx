@@ -79,7 +79,7 @@ const FacultyDashboard = () => {
   }, [active.length, archive.length, loadApplicantCounts]);
 
   const handleEdit = (opportunity) => {
-    navigate(`/faculty/opportunities?edit=${opportunity._id}`);
+    navigate(`/post-opportunity?edit=${opportunity._id}`);
   };
 
   const handleDelete = (opportunity) => {

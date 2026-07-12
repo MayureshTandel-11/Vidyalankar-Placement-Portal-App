@@ -18,34 +18,40 @@ import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import PromotionsPage from "./pages/PromotionsPage";
 import { useAuth } from "./context/AuthContext";
 import Layout from "./components/Layout";
-import Footer from "./components/Footer";
 import StudentManagement from "./components/StudentManagement";
-import StudentAnalytics from "./components/StudentAnalytics";
-// import Notifications from "./components/Notifications";
-import { useState } from "react";
+import Notifications from "./components/Notifications";
 import AnalyticsPage from "./pages/AnalyticsPage";
+import { Spinner } from "./components/ui";
+
+const AuthBootstrapping = () => (
+  <div className="flex min-h-screen items-center justify-center">
+    <Spinner />
+  </div>
+);
 
 const ProtectedRoute = ({ children, allowRoles }) => {
-  const { user } = useAuth();
+  const { user, isHydrated } = useAuth();
+  if (!isHydrated) return <AuthBootstrapping />;
   if (!user) return <Navigate to="/login" replace />;
   if (allowRoles && !allowRoles.includes(user.role)) return <Navigate to="/" replace />;
   return children;
 };
 
 const HomeRedirect = () => {
-  const { user } = useAuth();
+  const { user, isHydrated } = useAuth();
+  if (!isHydrated) return <AuthBootstrapping />;
   if (!user) return <Navigate to="/login" replace />;
   return <Navigate to="/dashboard" replace />;
 };
 
 const PublicOnly = ({ children }) => {
-  const { user } = useAuth();
+  const { user, isHydrated } = useAuth();
+  if (!isHydrated) return <AuthBootstrapping />;
   return user ? <Navigate to="/" replace /> : children;
 };
 
 const App = () => {
   const { user } = useAuth();
-  const [unreadNotifications, setUnreadNotifications] = useState(0);
 
   return (
     <OpportunitiesProvider>
@@ -61,9 +67,8 @@ const App = () => {
       <Route path="/manage-faculty" element={<ProtectedRoute allowRoles={["admin"]}><ManageFacultyPage /></ProtectedRoute>} />
       <Route path="/students" element={<ProtectedRoute allowRoles={["faculty", "admin"]}><Layout role={user?.role?.charAt(0).toUpperCase() + user?.role?.slice(1)}><StudentManagement /></Layout></ProtectedRoute>} />
       <Route path="/promotions" element={<ProtectedRoute allowRoles={["faculty", "admin"]}><PromotionsPage /></ProtectedRoute>} />
-      {/* FIX: Use dedicated AnalyticsPage instead of broken inline StudentAnalytics with null studentId */}
       <Route path="/analytics" element={<ProtectedRoute allowRoles={["faculty", "admin"]}><AnalyticsPage /></ProtectedRoute>} />
-      {/* <Route path="/notifications" element={<ProtectedRoute allowRoles={["student"]}><Layout role="Student"><Notifications onUnreadCountChange={setUnreadNotifications} /></Layout></ProtectedRoute>} /> */}
+      <Route path="/notifications" element={<ProtectedRoute allowRoles={["student"]}><Layout role="Student"><Notifications /></Layout></ProtectedRoute>} />
       <Route path="/request-deletion" element={<ProtectedRoute allowRoles={["student"]}><StudentDeletionRequestPage /></ProtectedRoute>} />
       <Route path="/department-change-request" element={<ProtectedRoute allowRoles={["student"]}><StudentDepartmentChangeRequestPage /></ProtectedRoute>} />
       <Route path="/department-requests" element={<ProtectedRoute allowRoles={["admin"]}><AdminDepartmentRequestsPage /></ProtectedRoute>} />

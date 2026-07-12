@@ -1,25 +1,24 @@
-import { createContext, useContext, useEffect, useState, useCallback } from "react";
-import { setAccessToken, clearAccessToken } from "../utils/apiClient";
+import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
+import {
+  setAccessToken,
+  clearAccessToken,
+  refreshSession,
+} from "../utils/apiClient";
+import api from "../utils/apiClient";
 import { initSocket, disconnectSocket } from "../utils/socket";
 import { sanitizeAuthStateForStorage } from "../utils/authStorage";
 
 const AuthContext = createContext(null);
 
 /**
- * Production-grade Auth Provider
- * Features:
- * - In-memory token storage (never localStorage/sessionStorage for sensitive tokens)
- * - Proper token persistence via localStorage for non-sensitive user data only
- * - Safe token hydration on app load
- * - Automatic socket reconnection on token changes
- * - Event-driven logout on token expiration
- * - No token state conflicts
+ * Auth Provider
+ * - Access token lives in memory only (apiClient + React state)
+ * - localStorage keeps user profile only (never the JWT)
+ * - Session restore uses httpOnly refresh cookie via /auth/refresh
  */
 export const AuthProvider = ({ children }) => {
   const [auth, setAuth] = useState(() => {
     try {
-      // On initial mount, try to restore from localStorage
-      // IMPORTANT: Token is stored in apiClient in-memory, not localStorage
       const saved = localStorage.getItem("placement_auth");
       if (!saved) {
         return { token: "", user: null };
@@ -28,11 +27,9 @@ export const AuthProvider = ({ children }) => {
       const parsed = JSON.parse(saved);
       const safeParsed = sanitizeAuthStateForStorage(parsed);
 
-      if (JSON.stringify(safeParsed) !== saved) {
-        localStorage.setItem("placement_auth", JSON.stringify(safeParsed));
-      }
+      // Migrate any legacy token out of localStorage immediately
+      localStorage.setItem("placement_auth", JSON.stringify(safeParsed));
 
-      // Defensive: validate parsed data structure
       if (typeof safeParsed !== "object" || !safeParsed.user) {
         console.warn("[AUTH] Invalid auth data in localStorage, clearing");
         localStorage.removeItem("placement_auth");
@@ -40,7 +37,6 @@ export const AuthProvider = ({ children }) => {
         return { token: "", user: null };
       }
 
-      // Validate user object has required fields
       if (typeof safeParsed.user !== "object" || !safeParsed.user._id) {
         console.warn("[AUTH] Malformed user object, clearing");
         localStorage.removeItem("placement_auth");
@@ -48,20 +44,16 @@ export const AuthProvider = ({ children }) => {
         return { token: "", user: null };
       }
 
-      if (process.env.NODE_ENV === "development") {
+      if (import.meta.env.DEV) {
         console.log("[AUTH] Restored user from localStorage:", {
           userId: safeParsed.user._id,
           email: safeParsed.user.email,
-          role: safeParsed.user.role
+          role: safeParsed.user.role,
         });
       }
 
-      // Set token in apiClient if present
-      if (safeParsed.token) {
-        setAccessToken(safeParsed.token);
-      }
-
-      return safeParsed;
+      // Token is intentionally NOT restored from storage
+      return { token: "", user: safeParsed.user };
     } catch (err) {
       console.error("[AUTH] Error restoring auth state:", err.message);
       clearAccessToken();
@@ -71,50 +63,42 @@ export const AuthProvider = ({ children }) => {
   });
 
   const [isHydrated, setIsHydrated] = useState(false);
+  const sessionRestoreAttempted = useRef(false);
 
-  /**
-   * Login: set token and user info
-   * Token is stored in apiClient (in-memory)
-   * User info is stored in localStorage (non-sensitive)
-   */
+  const persistUser = useCallback((user) => {
+    const safeAuthState = sanitizeAuthStateForStorage({ user });
+    localStorage.setItem("placement_auth", JSON.stringify(safeAuthState));
+  }, []);
+
   const login = useCallback((token, user) => {
     if (!token || !user) {
       console.warn("[AUTH] Invalid login data", { token: !!token, user: !!user });
       return;
     }
 
-    // Validate token is a string
     if (typeof token !== "string") {
       console.error("[AUTH] Invalid token type:", typeof token);
       return;
     }
 
-    // Validate user object
     if (typeof user !== "object" || !user._id) {
       console.error("[AUTH] Invalid user object for login");
       return;
     }
 
-    if (process.env.NODE_ENV === "development") {
+    if (import.meta.env.DEV) {
       console.log("[AUTH LOGIN] User logged in:", {
         userId: user._id,
         email: user.email,
-        role: user.role
+        role: user.role,
       });
     }
 
-    // Set token in apiClient (in-memory only)
     setAccessToken(token);
-
-    // Update state and persist only lightweight auth info
-    const authState = { token, user };
-    const safeAuthState = sanitizeAuthStateForStorage(authState);
-    setAuth(authState);
-    localStorage.setItem("placement_auth", JSON.stringify(safeAuthState));
-
-    // Initialize socket connection with new token
+    setAuth({ token, user });
+    persistUser(user);
     initSocket();
-  }, []);
+  }, [persistUser]);
 
   const updateUser = useCallback((updates) => {
     setAuth((prev) => {
@@ -123,20 +107,24 @@ export const AuthProvider = ({ children }) => {
       }
 
       const nextUser = { ...prev.user, ...updates };
-      const nextState = { ...prev, user: nextUser };
-      const safeNextState = sanitizeAuthStateForStorage(nextState);
-      localStorage.setItem("placement_auth", JSON.stringify(safeNextState));
-      return nextState;
+      persistUser(nextUser);
+      return { ...prev, user: nextUser };
     });
-  }, []);
+  }, [persistUser]);
 
-  /**
-   * Logout: clear all auth state
-   * Clears token from apiClient and localStorage
-   */
-  const logout = useCallback(() => {
-    if (process.env.NODE_ENV === "development") {
+  const logout = useCallback(async () => {
+    if (import.meta.env.DEV) {
       console.log("[AUTH LOGOUT] User logged out");
+    }
+
+    try {
+      // Clears httpOnly refresh cookie on the server (cookie-only endpoint)
+      await api.post("/auth/logout");
+    } catch (err) {
+      // Still clear local session even if network/cookie clear fails
+      if (import.meta.env.DEV) {
+        console.warn("[AUTH LOGOUT] Server logout failed:", err.message);
+      }
     }
 
     clearAccessToken();
@@ -145,26 +133,42 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem("placement_auth");
   }, []);
 
-  /**
-   * Sync logout when token becomes empty
-   * Ensures consistency if auth state is cleared externally
-   */
+  // Restore access token from refresh cookie after user hydration
   useEffect(() => {
-    if (!auth.token && auth.user) {
-      // Token cleared but user still present - inconsistent state
-      if (process.env.NODE_ENV === "development") {
-        console.log("[AUTH] Token cleared, syncing logout");
-      }
-      clearAccessToken();
-      localStorage.removeItem("placement_auth");
-      setAuth({ token: "", user: null });
-    }
-  }, [auth.token, auth.user]);
+    if (sessionRestoreAttempted.current) return;
+    sessionRestoreAttempted.current = true;
 
-  /**
-   * Listen for logout events triggered by apiClient
-   * (e.g., token expired, refresh failed)
-   */
+    const restoreSession = async () => {
+      if (!auth.user) {
+        setIsHydrated(true);
+        return;
+      }
+
+      try {
+        const { accessToken, user } = await refreshSession();
+        setAccessToken(accessToken);
+        const nextUser = user && user._id ? user : auth.user;
+        setAuth({ token: accessToken, user: nextUser });
+        persistUser(nextUser);
+        initSocket();
+      } catch (err) {
+        if (import.meta.env.DEV) {
+          console.warn("[AUTH] Session restore failed:", err.message);
+        }
+        clearAccessToken();
+        disconnectSocket();
+        setAuth({ token: "", user: null });
+        localStorage.removeItem("placement_auth");
+      } finally {
+        setIsHydrated(true);
+      }
+    };
+
+    restoreSession();
+    // Intentionally run once on mount with initial auth.user
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     const handleLogout = (event) => {
       const reason = event.detail?.reason || "unknown";
@@ -176,44 +180,21 @@ export const AuthProvider = ({ children }) => {
     return () => window.removeEventListener("auth:logout", handleLogout);
   }, [logout]);
 
-  /**
-   * Listen for token refresh events
-   * Update token in context when apiClient refreshes it
-   */
   useEffect(() => {
     const handleTokenRefresh = (event) => {
       const newToken = event.detail?.accessToken;
       if (newToken && auth.user) {
-        if (process.env.NODE_ENV === "development") {
+        if (import.meta.env.DEV) {
           console.log("[AUTH] Token refreshed via event");
         }
-        // Update auth state with new token
-        const authState = { token: newToken, user: auth.user };
-        const safeAuthState = sanitizeAuthStateForStorage(authState);
-        setAuth(authState);
-        localStorage.setItem("placement_auth", JSON.stringify(safeAuthState));
+        setAuth((prev) => ({ ...prev, token: newToken }));
+        // Do not write access token to localStorage
       }
     };
 
     window.addEventListener("auth:token-refreshed", handleTokenRefresh);
     return () => window.removeEventListener("auth:token-refreshed", handleTokenRefresh);
   }, [auth.user]);
-
-  /**
-   * Mark as hydrated after initial mount
-   * Allows consumers to know when auth state is ready
-   */
-  useEffect(() => {
-    if (!isHydrated) {
-      if (process.env.NODE_ENV === "development") {
-        console.log("[AUTH] Auth hydration complete", {
-          hasToken: !!auth.token,
-          hasUser: !!auth.user
-        });
-      }
-      setIsHydrated(true);
-    }
-  }, [isHydrated, auth.token, auth.user]);
 
   return (
     <AuthContext.Provider value={{ ...auth, login, logout, updateUser, isHydrated }}>
