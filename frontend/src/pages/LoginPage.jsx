@@ -118,8 +118,10 @@ const LoginPage = () => {
         )}
         <StatusMessage type="error" message={error} className="text-xs xs:text-sm" />
         <PrimaryButton loading={loading} disabled={loading} className="w-full rounded-lg xs:rounded-xl py-2.5 xs:py-3 text-xs xs:text-sm">{loading ? "Logging In..." : "Login"}</PrimaryButton>
-        <div className="flex flex-col xs:flex-row items-start xs:items-center justify-between gap-2 border-t border-slate-200 pt-2">
-          <Link className="flex items-center gap-1 text-xs xs:text-sm text-red-600 transition-colors duration-200 ease-in-out hover:text-red-500" to="/register"><UserCog size={13} className="xs:size-3.5" />New student? Register</Link>
+        <div className={`flex flex-col xs:flex-row items-start xs:items-center gap-2 border-t border-slate-200 pt-2 ${form.role === "student" ? "justify-between" : "justify-end"}`}>
+          {form.role === "student" ? (
+            <Link className="flex items-center gap-1 text-xs xs:text-sm text-red-600 transition-colors duration-200 ease-in-out hover:text-red-500" to="/register"><UserCog size={13} className="xs:size-3.5" />New student? Register</Link>
+          ) : null}
           <Link className="text-xs xs:text-sm text-red-600 hover:text-red-700" to="/forgot-password">Forgot password?</Link>
         </div>
       </Motion.form>

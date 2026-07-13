@@ -210,8 +210,8 @@ const AnalyticsPage = () => {
                 onClick={() => setAnalyticsView(view.id)}
                 className={`rounded-full px-4 py-2 text-xs font-medium border transition ${
                   analyticsView === view.id
-                    ? "bg-indigo-600 text-white border-indigo-600"
-                    : "bg-white text-slate-700 border-slate-200 hover:border-indigo-300"
+                    ? "bg-red-600 text-white border-red-600"
+                    : "bg-white text-slate-700 border-slate-200 hover:border-red-300"
                 }`}
               >
                 {view.label}
@@ -253,8 +253,8 @@ const AnalyticsPage = () => {
                     onClick={() => setYearFilter("")}
                     className={`rounded-full px-4 py-2 text-xs font-medium border transition ${
                       !yearFilter
-                        ? "bg-indigo-600 text-white border-indigo-600"
-                        : "bg-white text-slate-700 border-slate-200 hover:border-indigo-300"
+                        ? "bg-red-600 text-white border-red-600"
+                        : "bg-white text-slate-700 border-slate-200 hover:border-red-300"
                     }`}
                   >
                     All years
@@ -288,7 +288,7 @@ const AnalyticsPage = () => {
                     type="button"
                     onClick={handleDownloadStudentAnalyticsCSV}
                     disabled={studentCsvDownloading}
-                    className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
+                    className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
                   >
                     <Download size={16} />
                     {studentCsvDownloading ? "Downloading..." : "Download CSV"}
